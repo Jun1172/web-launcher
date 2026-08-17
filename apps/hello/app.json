@@ -1,0 +1,11 @@
+{
+  "id": "hello",
+  "name": "测试应用",
+  "icon": "👋",
+  "color": "#ff6b6b",
+  "version": "1.0.0",
+  "changelog": "首次发布",
+  "port": 8110,
+  "cmd": ["apps/hello/main.py"],
+  "dock": false
+}

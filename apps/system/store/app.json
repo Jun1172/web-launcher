@@ -1,0 +1,12 @@
+{
+  "id": "store",
+  "name": "应用商店",
+  "icon": "🛒",
+  "color": "#00cec9",
+  "version": "1.0.0",
+  "changelog": "系统应用，可更新不可卸载",
+  "port": 8100,
+  "cmd": ["apps/system/store/app.py"],
+  "dock": true,
+  "system": true
+}

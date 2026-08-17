@@ -1,4 +1,3 @@
-# launcher.py —— v4（商店变普通应用，修复自签名证书）
 import json, socket, subprocess, sys, time, atexit, os, re
 import hashlib, zipfile, shutil, base64, urllib.request, ssl
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -6,70 +5,127 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 BASE = Path(__file__).parent
-APPS_JSON = BASE / "apps.json"
+CONFIG_JSON = BASE / "config.json"
+APPS_DIR = BASE / "apps"
+SYSTEM_APPS_DIR = APPS_DIR / "system"
+USER_APPS_DIR = APPS_DIR / "user"
 
-# ══ 商店配置（自签名证书需要跳过验证）══
-REPO_URL = "https://172.18.119.215"
-REPO_AUTH = None
+def load_config():
+    if CONFIG_JSON.exists():
+        return json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+    return {}
+
+CONFIG = load_config()
+
+LAUNCHER_CFG = CONFIG.get("launcher", {})
+REPO_CFG = CONFIG.get("repo", {})
+PUBLISH_CFG = CONFIG.get("publish", {})
+PORTS_CFG = CONFIG.get("ports", {})
+
+LAUNCHER_HOST = LAUNCHER_CFG.get("host", "127.0.0.1")
+LAUNCHER_PORT = LAUNCHER_CFG.get("port", 8000)
+LAUNCHER_TITLE = LAUNCHER_CFG.get("title", "我的 Launcher")
+
+REPO_URL = REPO_CFG.get("url", "")
+REPO_AUTH = REPO_CFG.get("auth")
+VERIFY_SSL = REPO_CFG.get("verify_ssl", False)
+
 SSL_CTX = ssl.create_default_context()
-SSL_CTX.check_hostname = False
-SSL_CTX.verify_mode = ssl.CERT_NONE
+if not VERIFY_SSL:
+    SSL_CTX.check_hostname = False
+    SSL_CTX.verify_mode = ssl.CERT_NONE
 
-# ══ 内置应用（不可卸载）══
-BUILTIN = [
-    {"id": "store", "name": "应用商店", "icon": "🛒", "color": "#00cec9",
-     "dock": True, "cmd": None},  # ← 商店作为普通应用，特殊处理
-    {"id": "todo",  "name": "待办清单", "icon": "📝", "color": "#5b8cff", "dock": True,
-     "port": 8101, "cmd": [sys.executable, str(BASE / "apps" / "todo" / "app.py")]},
-    {"id": "clock", "name": "番茄钟",   "icon": "⏱️", "color": "#e74c3c", "dock": True,
-     "port": 8102, "cmd": [sys.executable, str(BASE / "apps" / "clock" / "app.py")]},
-]
+def resolve_cmd(e):
+    cmd = e.get("cmd")
+    if not cmd:
+        return None
+    cmd = [str(BASE / c) if not Path(c).is_absolute() else c for c in cmd]
+    if cmd[0].lower().endswith((".py", ".pyw")):
+        cmd = [sys.executable] + cmd
+    return cmd
 
-installed = json.loads(APPS_JSON.read_text(encoding="utf-8")) if APPS_JSON.exists() else []
+def _scan_apps(root, *, system):
+    """扫描 root/*/app.json 加载应用清单"""
+    apps = []
+    if not root.exists():
+        return apps
+    for d in sorted(root.iterdir()):
+        if not d.is_dir():
+            continue
+        app_json = d / "app.json"
+        if not app_json.exists():
+            continue
+        try:
+            meta = json.loads(app_json.read_text(encoding="utf-8"))
+            meta.setdefault("id", d.name)
+            meta["system"] = system
+            meta["cmd"] = resolve_cmd(meta)
+            apps.append(meta)
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"⚠ 应用 {d.name} 加载失败: {e}")
+    return apps
+
+def load_system_apps():
+    """系统应用：默认安装、可更新、不可卸载"""
+    return _scan_apps(SYSTEM_APPS_DIR, system=True)
+
+def load_user_apps():
+    """用户应用：允许安装和卸载"""
+    return _scan_apps(USER_APPS_DIR, system=False)
+
+system_apps = []
+user_apps = []
 procs = {}
 REGISTRY = []
 
 def vt(v): return tuple(int(x) for x in re.findall(r"\d+", v or "0")[:3])
 
-def resolve_cmd(e):
-    cmd = e.get("cmd")
-    if not cmd: return None
-    cmd = [str(BASE / c) if not Path(c).is_absolute() else c for c in cmd]
-    if cmd[0].lower().endswith((".py", ".pyw")): cmd = [sys.executable] + cmd
-    return cmd
+def is_system_app(aid):
+    return any(a["id"] == aid for a in system_apps)
+
+def is_user_app(aid):
+    return any(a["id"] == aid for a in user_apps)
 
 def rebuild_registry():
     global REGISTRY
-    REGISTRY = BUILTIN + [{**e, "cmd": resolve_cmd(e)} for e in installed]
-rebuild_registry()
+    REGISTRY = system_apps + user_apps
 
-def save_installed():
-    APPS_JSON.write_text(json.dumps(installed, ensure_ascii=False, indent=2), encoding="utf-8")
+def reload_apps():
+    """重新扫描磁盘，刷新 system_apps / user_apps / REGISTRY"""
+    global system_apps, user_apps
+    system_apps = load_system_apps()
+    user_apps = load_user_apps()
+    rebuild_registry()
 
-# ══ 进程容器 ══
+reload_apps()
+
 def port_ready(port, timeout=6):
     end = time.time() + timeout
     while time.time() < end:
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.3): return True
-        except OSError: time.sleep(0.1)
+            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                return True
+        except OSError:
+            time.sleep(0.1)
     return False
 
 def open_app(app):
-    if app["id"] == "store": return True  # 商店特殊处理
-    if not app.get("cmd"): return True
+    if not app.get("cmd"):
+        return True
     p = procs.get(app["id"])
-    if p and p.poll() is None: return True
-    kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+    if p and p.poll() is None:
+        return True
+    kw = {}
+    if os.name == "nt":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW
     procs[app["id"]] = subprocess.Popen(app["cmd"], **kw)
     return port_ready(app["port"])
 
 def close_app(aid):
-    if aid == "store": return
     p = procs.pop(aid, None)
-    if p and p.poll() is None: p.terminate()
+    if p and p.poll() is None:
+        p.terminate()
 
-# ══ 商店：拉目录 / 安装 / 卸载（支持自签名证书）══
 def repo_get(path):
     req = urllib.request.Request(REPO_URL.rstrip("/") + "/" + path)
     if REPO_AUTH:
@@ -81,34 +137,57 @@ def repo_index():
     return json.loads(repo_get("index.json").read().decode("utf-8"))
 
 def do_install(aid):
-    if not aid: return False, "缺少 id"
-    try: meta = next(m for m in repo_index().get("apps", []) if m["id"] == aid)
-    except StopIteration: return False, "仓库中不存在"
+    if not aid:
+        return False, "缺少 id"
+    try:
+        meta = next(m for m in repo_index().get("apps", []) if m["id"] == aid)
+    except StopIteration:
+        return False, "仓库中不存在"
+    # 系统应用走更新流程；用户应用走安装流程
+    is_system = is_system_app(aid) or meta.get("system", False)
     close_app(aid)
     data = repo_get(meta["pkg"]).read()
     if meta.get("sha256") and hashlib.sha256(data).hexdigest() != meta["sha256"]:
         return False, "sha256 校验失败"
-    tmp = BASE / "apps" / f"{aid}.zip.tmp"
-    BASE.joinpath("apps").mkdir(exist_ok=True)
+    dest_root = SYSTEM_APPS_DIR if is_system else USER_APPS_DIR
+    dest_root.mkdir(parents=True, exist_ok=True)
+    tmp = dest_root / f"{aid}.zip.tmp"
     tmp.write_bytes(data)
     with zipfile.ZipFile(tmp) as z:
         bad = [n for n in z.namelist() if n.startswith("/") or ".." in n]
-        if bad: return False, "zip 包含非法路径"
-        z.extractall(BASE / "apps")
+        if bad:
+            return False, "zip 包含非法路径"
+        # 兼容 zip 内顶层为 <aid>/ 或直接为文件的两种结构
+        names = z.namelist()
+        top_dirs = {n.split("/", 1)[0] for n in names if "/" in n}
+        if top_dirs == {aid}:
+            # 标准结构：包内已有 <aid>/ 顶层目录，直接解压到 dest_root
+            target = dest_root / aid
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            z.extractall(dest_root)
+        else:
+            # 扁平结构：包内是文件列表，解压到 dest_root/<aid>/
+            target = dest_root / aid
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            target.mkdir(parents=True, exist_ok=True)
+            z.extractall(target)
     tmp.unlink()
-    entry = {k: meta[k] for k in
-             ("id","name","icon","color","version","port","cmd","dock") if k in meta}
-    installed[:] = [e for e in installed if e["id"] != aid] + [entry]
-    save_installed(); rebuild_registry()
+    reload_apps()
     return True, "ok"
 
 def do_uninstall(aid):
-    if aid in [a["id"] for a in BUILTIN]: return False, "内置应用不可卸载"
-    if aid not in [e["id"] for e in installed]: return False, "未安装"
+    if not aid:
+        return False, "缺少 id"
+    if is_system_app(aid):
+        return False, "系统应用不可卸载"
+    app_dir = USER_APPS_DIR / aid
+    if not app_dir.exists():
+        return False, "未安装"
     close_app(aid)
-    shutil.rmtree(BASE / "apps" / aid, ignore_errors=True)
-    installed[:] = [e for e in installed if e["id"] != aid]
-    save_installed(); rebuild_registry()
+    shutil.rmtree(app_dir, ignore_errors=True)
+    reload_apps()
     return True, "ok"
 
 def stub_html(a):
@@ -120,7 +199,7 @@ justify-content:center;height:100vh;margin:0;background:linear-gradient(160deg,{
 
 HTML = r"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>我的 Launcher</title>
+<title>""" + LAUNCHER_TITLE + r"""</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden}
@@ -157,6 +236,7 @@ box-shadow:0 8px 18px rgba(0,0,0,.35);transition:transform .12s}
 .name{font-size:12px;opacity:.92;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tile.running::after{content:"";position:absolute;bottom:-11px;left:50%;
 transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#7CFC9A}
+.tile.system::before{content:"";position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:#00cec9}
 #dots{display:flex;justify-content:center;gap:6px;padding:8px 0 12px}
 #dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.35);transition:.2s}
 #dots i.on{background:#fff;transform:scale(1.2)}
@@ -171,19 +251,6 @@ display:flex;flex-direction:column;padding:46px 0 24px}
 .pHead span{display:flex;gap:8px}
 .pHead button{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:14px;
 padding:6px 12px;cursor:pointer;font-size:12px}
-#sList{flex:1;overflow-y:auto;padding-top:4px}
-.row{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.08);
-border-radius:16px;padding:12px 14px;margin:0 22px 12px}
-.row .tile{width:46px;height:46px;font-size:24px;border-radius:12px;flex:0 0 auto}
-.row .info{flex:1;min-width:0}
-.row .info b{font-size:14px;display:block}
-.row .info small{color:rgba(255,255,255,.55);font-size:11px;display:block;
-overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.row button{background:#5b8cff;border:none;color:#fff;border-radius:12px;
-padding:8px 14px;font-size:12px;cursor:pointer;flex:0 0 auto}
-.row button.warn{background:#e74c3c}
-.row button.ghost{background:rgba(255,255,255,.15)}
-.row button:disabled{opacity:.5}
 #rCards{flex:1;display:flex;gap:14px;overflow-x:auto;padding:10px 22px;align-items:center;touch-action:pan-x}
 .card{position:relative;flex:0 0 150px;height:210px;border-radius:18px;background:rgba(255,255,255,.1);
 display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
@@ -229,15 +296,7 @@ border-radius:3px;background:#fff;mix-blend-mode:difference;z-index:99;cursor:po
   <div id="dock"></div>
 </div>
 
-<!-- 商店面板（点击商店图标打开） -->
-<div id="store" class="panel">
-  <div class="pHead"><span>🛒 应用商店</span>
-    <span><button id="sRefresh">⟳ 刷新</button><button id="sClose">✕ 关闭</button></span></div>
-  <div id="sList"></div>
-  <div class="rTip">安装 / 升级 / 卸载 实时生效 · 点关闭或 Home 条退出</div>
-</div>
-
-<!-- 最近任务（应用内上滑） -->
+<!-- 最近任务面板（上拉手势打开） -->
 <div id="recents" class="panel">
   <div class="pHead"><span>最近任务</span>
     <span><button id="clearAll">全部清除</button><button id="closeR">▼ 收起</button></span></div>
@@ -250,7 +309,7 @@ border-radius:3px;background:#fff;mix-blend-mode:difference;z-index:99;cursor:po
 
 <script>
 const PAGE=16;
-let APPS=[],pageIdx=0,screenCount=0,current=null,recentsOpen=false,storeOpen=false,suppress=false;
+let APPS=[],pageIdx=0,screenCount=0,current=null,recentsOpen=false,suppress=false;
 const pages={},openedOrder=[];
 const $=id=>document.getElementById(id);
 
@@ -287,7 +346,9 @@ function buildHome(){
 }
 function iconEl(a){
   const d=document.createElement('div');d.className='icon';d.dataset.id=a.id;
-  d.innerHTML=`<div class="tile" style="--c:${a.color}">${a.icon}</div><div class="name">${a.name}</div>`;
+  const sys=a.system?'<div class="tile system" style="--c:'+a.color+'">'+a.icon+'</div>':
+    '<div class="tile" style="--c:'+a.color+'">'+a.icon+'</div>';
+  d.innerHTML=sys+'<div class="name">'+a.name+'</div>';
   return d;
 }
 function gotoPage(i){
@@ -299,14 +360,15 @@ addEventListener('resize',()=>gotoPage(pageIdx));
 function updateDots(){
   const run={};APPS.forEach(a=>run[a.id]=a.running);
   document.querySelectorAll('.icon').forEach(el=>{
-    el.querySelector('.tile').classList.toggle('running',!!run[el.dataset.id]);
+    const tile=el.querySelector('.tile');
+    if(tile){
+      tile.classList.toggle('running',!!run[el.dataset.id]);
+      tile.classList.toggle('system',!!APPS.find(a=>a.id===el.dataset.id && a.system));
+    }
   });
 }
 
 async function openApp(a){
-  // 商店特殊处理：打开商店面板而不是 iframe
-  if(a.id==='store'){storeOpen=true;$('store').classList.add('show');openStore();return;}
-  
   let pg=pages[a.id];
   if(!pg){
     pg=document.createElement('div');pg.className='page';
@@ -328,14 +390,12 @@ async function openApp(a){
   poll();
 }
 function goHome(){
-  if(storeOpen)return closeStore();
   if(recentsOpen)return closeRecents();
   if(!current)return;
   pages[current].classList.remove('show');
   $('home').classList.remove('dim');current=null;
 }
 async function killApp(id){
-  if(id==='store')return closeStore();
   await fetch('/api/close?id='+id);
   if(pages[id]){pages[id].remove();delete pages[id];
     openedOrder.splice(openedOrder.indexOf(id),1);}
@@ -343,42 +403,6 @@ async function killApp(id){
   if(recentsOpen)renderRecents();
   poll();
 }
-
-/* ── 商店 ── */
-async function openStore(){
-  $('sList').innerHTML='<div class="rEmpty">正在连接商店…</div>';
-  const j=await (await fetch('/api/repo')).json();
-  renderStore(j);
-}
-function closeStore(){storeOpen=false;$('store').classList.remove('show');}
-function renderStore(j){
-  const box=$('sList');
-  if(j.error){box.innerHTML=`<div class="rEmpty">连不上商店：${j.error}<br>请检查 REPO_URL</div>`;return;}
-  if(!j.apps.length){box.innerHTML='<div class="rEmpty">仓库是空的，去发布第一个应用吧</div>';return;}
-  box.innerHTML='';
-  j.apps.forEach(m=>{
-    const d=document.createElement('div');d.className='row';
-    const btn=m.local
-      ?(m.upgradable
-        ?`<button data-act="up" data-id="${m.id}">升级 ${m.local}→${m.version}</button>`
-        :`<button class="ghost" data-act="un" data-id="${m.id}">卸载</button>`)
-      :`<button data-act="in" data-id="${m.id}">安装</button>`;
-    d.innerHTML=`<div class="tile" style="--c:${m.color}">${m.icon}</div>
-      <div class="info"><b>${m.name} <span style="opacity:.5">v${m.version}</span></b>
-      <small>${m.changelog||''}</small></div>`+btn;
-    box.appendChild(d);
-  });
-}
-$('sList').onclick=async e=>{
-  const b=e.target.closest('button[data-act]');if(!b||b.disabled)return;
-  const{act,id}=b.dataset;b.disabled=true;b.textContent='…';
-  await fetch(`/api/${act==='un'?'uninstall':'install'}?id=${id}`);
-  if(act==='un'&&pages[id]){pages[id].remove();delete pages[id];
-    openedOrder.splice(openedOrder.indexOf(id),1);}
-  await poll();buildHome();openStore();
-};
-$('sRefresh').onclick=()=>openStore();
-$('sClose').onclick=closeStore;
 
 /* ── 最近任务 ── */
 function openRecents(){recentsOpen=true;renderRecents();$('recents').classList.add('show');}
@@ -403,12 +427,12 @@ function renderRecents(){
 $('clearAll').onclick=()=>{[...openedOrder].forEach(killApp);};
 $('closeR').onclick=closeRecents;
 
-/* ── 手势：桌面上滑不再开商店，应用内上滑=任务 ── */
+/* ── 手势：上拉打开最近任务 ── */
 let drag=null;
 addEventListener('pointerdown',e=>{
   if(e.target.closest('#homeBar,button,.bar,#statusbar,.card'))return;
   drag={x:e.clientX,y:e.clientY,dx:0,dy:0,axis:null};
-  if(!recentsOpen&&!storeOpen&&e.target.setPointerCapture)
+  if(!recentsOpen&&e.target.setPointerCapture)
     e.target.setPointerCapture(e.pointerId);
 });
 addEventListener('pointermove',e=>{
@@ -416,7 +440,7 @@ addEventListener('pointermove',e=>{
   drag.dx=e.clientX-drag.x;drag.dy=e.clientY-drag.y;
   if(!drag.axis&&(Math.abs(drag.dx)>8||Math.abs(drag.dy)>8))
     drag.axis=Math.abs(drag.dx)>Math.abs(drag.dy)?'h':'v';
-  if(!recentsOpen&&!storeOpen&&!current&&drag.axis==='h'){
+  if(!recentsOpen&&!current&&drag.axis==='h'){
     $('screens').style.transition='none';
     $('screens').style.transform=
       `translateX(${-pageIdx*$('pager').clientWidth+drag.dx}px)`;
@@ -426,9 +450,9 @@ addEventListener('pointerup',e=>{
   if(!drag)return;
   const{dx,dy,axis}=drag;drag=null;
   suppress=!!axis&&(Math.abs(dx)>8||Math.abs(dy)>8);
-  if(storeOpen){if(axis==='v'&&dy>70)closeStore();return;}
   if(recentsOpen){if(axis==='v'&&dy>70)closeRecents();return;}
   if(!current){
+    if(axis==='v'&&dy<-60){openRecents();return;}
     if(axis==='h'){if(dx<-60)gotoPage(pageIdx+1);else if(dx>60)gotoPage(pageIdx-1);else gotoPage(pageIdx);}
   }else{
     if(axis==='v'&&dy<-50)openRecents();
@@ -439,7 +463,7 @@ document.addEventListener('click',e=>{
   const ic=e.target.closest('.icon');if(!ic)return;
   const a=APPS.find(x=>x.id===ic.dataset.id);if(a)openApp(a);
 });
-$('homeBar').onclick=goHome;
+$('homeBar').onclick=()=>{if(recentsOpen)closeRecents();else openRecents();};
 addEventListener('keydown',e=>{if(e.key==='Escape')goHome();});
 
 async function poll(){
@@ -456,6 +480,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(b)
 
@@ -466,8 +491,13 @@ class Handler(BaseHTTPRequestHandler):
                          and procs[a["id"]].poll() is None} for a in REGISTRY])
         elif u.path == "/api/repo":
             try:
-                loc = {e["id"]: e.get("version") for e in installed}
+                # 用磁盘扫描结果（system_apps + user_apps）作为本地版本来源
+                local_apps = {a["id"]: a for a in (system_apps + user_apps)}
+                loc = {aid: a.get("version") for aid, a in local_apps.items()}
+                sys_ids = {s["id"] for s in system_apps}
                 out = [{**m, "local": loc.get(m["id"]),
+                        "system": m["id"] in sys_ids or m.get("system", False),
+                        "installed": m["id"] in local_apps,
                         "upgradable": bool(loc.get(m["id"]))
                         and vt(m.get("version", "0")) > vt(loc.get(m["id"]))}
                        for m in repo_index().get("apps", [])]
@@ -483,17 +513,25 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/open":
             app = next((a for a in REGISTRY
                         if a["id"] == parse_qs(u.query).get("id", [None])[0]), None)
-            if not app: self._json({"ok": False, "url": None}); return
-            if app["id"] == "store": self._json({"ok": True, "url": None}); return
+            if not app:
+                self._json({"ok": False, "url": None})
+                return
             ok = open_app(app)
-            url = f"http://127.0.0.1:{app['port']}" if app.get("cmd") else f"/stub?id={app['id']}"
+            if app.get("cmd"):
+                url = f"http://127.0.0.1:{app['port']}"
+            else:
+                url = f"/stub?id={app['id']}"
             self._json({"ok": ok, "url": url if ok else None})
         elif u.path == "/api/close":
-            close_app(parse_qs(u.query).get("id", [None])[0]); self._json({"ok": True})
+            close_app(parse_qs(u.query).get("id", [None])[0])
+            self._json({"ok": True})
         elif u.path == "/stub":
             app = next((a for a in REGISTRY
                         if a["id"] == parse_qs(u.query).get("id", [None])[0]), None)
-            if not app: self.send_response(404); self.end_headers(); return
+            if not app:
+                self.send_response(404)
+                self.end_headers()
+                return
             self.send_response(200)
             self.send_header("Content-Type", "text/html;charset=utf-8")
             self.end_headers()
@@ -504,12 +542,13 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(HTML.encode())
 
-    def log_message(self, *a): pass
+    def log_message(self, *a):
+        pass
 
 if __name__ == "__main__":
     atexit.register(lambda: [p.terminate() for p in procs.values() if p.poll() is None])
-    print("Launcher 已就绪: http://localhost:8000")
+    print(f"Launcher 已就绪: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}")
     try:
-        ThreadingHTTPServer(("127.0.0.1", 8000), Handler).serve_forever()
+        ThreadingHTTPServer((LAUNCHER_HOST, LAUNCHER_PORT), Handler).serve_forever()
     except KeyboardInterrupt:
         pass

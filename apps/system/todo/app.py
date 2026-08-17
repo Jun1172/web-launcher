@@ -1,5 +1,17 @@
-# 示例应用A：纯标准库的"Web化"应用，只起服务、不开窗口
+import json, sys
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+
+BASE = Path(__file__).parent.parent.parent
+CONFIG_JSON = BASE / "config.json"
+
+def load_config():
+    if CONFIG_JSON.exists():
+        return json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+    return {}
+
+CONFIG = load_config()
+PORT = CONFIG.get("ports", {}).get("todo", 8101)
 
 HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{font-family:system-ui;padding:32px;background:#f6f8ff;color:#222}
@@ -8,7 +20,7 @@ button{padding:10px 16px;border:0;border-radius:10px;background:#5b8cff;color:#f
 li{margin:10px 0;padding:10px;background:#fff;border-radius:10px;
 box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer}
 </style></head><body>
-<h2>📝 待办清单 <small style="color:#999">独立进程 :8101</small></h2>
+<h2>📝 待办清单 <small style="color:#999">独立进程 :"""+str(PORT)+"""</small></h2>
 <input id="t" placeholder="输入待办，点添加"><button onclick="add()">添加</button>
 <ul id="list"></ul>
 <script>
@@ -25,4 +37,4 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(HTML.encode())
     def log_message(self, *a): pass
 
-ThreadingHTTPServer(("127.0.0.1", 8101), H).serve_forever()
+ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

@@ -1,0 +1,12 @@
+{
+  "id": "hello",
+  "name": "你好世界",
+  "icon": "👋",
+  "color": "#ff6b6b",
+  "version": "1.0.0",
+  "changelog": "最简单的 demo：计数器 + 实时时间，验证 launcher 拉起进程与 iframe 嵌入。",
+  "port": 8110,
+  "cmd": ["apps/user/hello/app.py"],
+  "dock": false,
+  "system": false
+}

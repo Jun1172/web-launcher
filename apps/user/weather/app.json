@@ -1,0 +1,12 @@
+{
+  "id": "weather",
+  "name": "天气",
+  "icon": "🌤️",
+  "color": "#3498db",
+  "version": "1.0.0",
+  "changelog": "天气 demo：mock 数据 + 多城市切换，验证多视图与图标渲染。",
+  "port": 8113,
+  "cmd": ["apps/user/weather/app.py"],
+  "dock": false,
+  "system": false
+}

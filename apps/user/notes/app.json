@@ -1,0 +1,12 @@
+{
+  "id": "notes",
+  "name": "便签",
+  "icon": "🗒️",
+  "color": "#f39c12",
+  "version": "1.0.0",
+  "changelog": "便签 demo：增删改查 + localStorage 持久化，验证浏览器本地存储场景。",
+  "port": 8112,
+  "cmd": ["apps/user/notes/app.py"],
+  "dock": false,
+  "system": false
+}

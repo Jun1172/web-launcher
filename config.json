@@ -1,0 +1,27 @@
+{
+  "launcher": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "title": "我的 Launcher"
+  },
+  "repo": {
+    "url": "https://172.18.119.215",
+    "auth": null,
+    "verify_ssl": false
+  },
+  "publish": {
+    "server": "jun@172.18.119.215",
+    "remote_path": "/var/www/repo",
+    "packages_dir": "packages"
+  },
+  "system_apps": [
+    "store",
+    "todo",
+    "clock"
+  ],
+  "ports": {
+    "store": 8100,
+    "todo": 8101,
+    "clock": 8102
+  }
+}

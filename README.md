@@ -1,5 +1,5 @@
 # 📱 Web Launcher
-
+![图片描述](doc\images\桌面.png)  
 一个用 Python 标准库写的"手机桌面风格"应用启动器。
 - 桌面 / Dock / 最近任务 / 多页滑动 / 上拉手势
 - 每个应用是独立 Python HTTP 进程，被 iframe 嵌入到桌面里

@@ -118,7 +118,8 @@ function render(){
 }
 
 function move(dir){
-  // dir: 0=up 1=right 2=down 3=left
+  // dir: 0=LEFT 1=DOWN 2=RIGHT 3=UP
+  // 实现：把网格顺时针旋转 dir*90 度，向左合并，再逆旋转回去
   let moved=false,g=grid.map(r=>r.slice());
   // 统一把方向旋转成"向左"，处理完再转回来
   const rotate=(g,n)=>{for(let i=0;i<n;i++)g=g[0].map((_,c)=>g.map(r=>r[c]).reverse());return g;};
@@ -156,28 +157,35 @@ function checkOver(){
   $('overlay').classList.add('show');
 }
 
+// 方向常量（语义化，避免数字搞混）
+// move(dir) 内部把网格顺时针旋转 dir*90 度后向左合并，再逆旋转。
+// 对应关系：0=向左 1=向下 2=向右 3=向上
+const LEFT=0,DOWN=1,RIGHT=2,UP=3;
+
 // 键盘
 addEventListener('keydown',e=>{
-  const m={ArrowUp:0,ArrowRight:1,ArrowDown:2,ArrowLeft:3,
-           'w':0,'d':1,'s':2,'a':3,'W':0,'D':1,'S':2,'A':3};
+  const m={ArrowUp:UP,ArrowRight:RIGHT,ArrowDown:DOWN,ArrowLeft:LEFT,
+           'w':UP,'d':RIGHT,'s':DOWN,'a':LEFT,
+           'W':UP,'D':RIGHT,'S':DOWN,'A':LEFT};
   if(m[e.key]!==undefined){e.preventDefault();move(m[e.key]);}
 });
 
-// 滑动
-let touch=null;
+// 滑动（鼠标 + 触摸都支持）
+let swipe=null;
 const board=$('board');
 board.addEventListener('pointerdown',e=>{
-  if(e.pointerType==='mouse')return;
-  touch={x:e.clientX,y:e.clientY};
+  swipe={x:e.clientX,y:e.clientY};
 });
 board.addEventListener('pointerup',e=>{
-  if(!touch||e.pointerType==='mouse')return;
-  const dx=e.clientX-touch.x,dy=e.clientY-touch.y;
-  touch=null;
-  if(Math.abs(dx)<20&&Math.abs(dy)<20)return;
-  if(Math.abs(dx)>Math.abs(dy))move(dx>0?1:3);
-  else move(dy>0?2:0);
+  if(!swipe)return;
+  const dx=e.clientX-swipe.x,dy=e.clientY-swipe.y;
+  swipe=null;
+  if(Math.abs(dx)<20&&Math.abs(dy)<20)return;  // 距离太短，当作点击
+  if(Math.abs(dx)>Math.abs(dy))move(dx>0?RIGHT:LEFT);
+  else move(dy>0?DOWN:UP);
 });
+// 阻止鼠标拖动时的文本选中
+board.addEventListener('dragstart',e=>e.preventDefault());
 
 // 初始化网格背景
 const gridEl=$('grid');

@@ -467,7 +467,11 @@ $('homeBar').onclick=()=>{if(recentsOpen)closeRecents();else openRecents();};
 addEventListener('keydown',e=>{if(e.key==='Escape')goHome();});
 
 async function poll(){
+  const prev=APPS.map(a=>a.id).join(',');
   APPS=await (await fetch('/api/apps')).json();
+  const cur=APPS.map(a=>a.id).join(',');
+  // 应用列表变化（安装/卸载）时重建桌面图标
+  if(prev!==cur && prev.length){buildHome();}
   updateDots();
   if(recentsOpen)renderRecents();
 }

@@ -87,9 +87,11 @@ python publish.py apps/user/myapp
 | store（应用商店） | 8100 |
 | todo（待办清单） | 8101 |
 | clock（番茄钟） | 8102 |
+| sysinfo（系统信息） | 8103 |
 | hello（demo） | 8110 |
 | calc（demo） | 8111 |
 | notes（demo） | 8112 |
 | weather（demo） | 8113 |
+| game2048（demo） | 8114 |
 
 新应用建议从 8120 开始往上分配，避免和现有应用冲突。

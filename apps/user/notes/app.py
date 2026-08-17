@@ -63,7 +63,6 @@ function add(){
   i.value='';save();
 }
 function del(id){
-  if(!confirm('删除这条便签？'))return;
   notes=notes.filter(n=>n.id!==id);save();
 }
 function editStart(id,el){

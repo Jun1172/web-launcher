@@ -1,0 +1,12 @@
+{
+  "id": "sysinfo",
+  "name": "系统信息",
+  "icon": "📊",
+  "color": "#2ecc71",
+  "version": "1.0.0",
+  "changelog": "系统应用：显示 CPU/内存使用率、Python/OS 版本、已安装应用列表。",
+  "port": 8103,
+  "cmd": ["apps/system/sysinfo/app.py"],
+  "dock": false,
+  "system": true
+}

@@ -203,7 +203,6 @@ async function doInstall(id){
 }
 
 async function doUninstall(id){
-  if(!confirm('确定要卸载这个应用吗？'))return;
   try{
     const r=await api('/api/uninstall?id='+encodeURIComponent(id));
     if(r.ok){loadData();}

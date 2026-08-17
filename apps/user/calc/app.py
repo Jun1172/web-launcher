@@ -96,16 +96,16 @@ function op(o){
 function eq(silent){
   if(!expr)return;
   try{
-    const fullExpr=expr+cur;
-    const e=fullExpr.replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-');
+    const e=expr.replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-');
+    // 仅允许数字和运算符
     if(!/^[0-9+\-*/%.()\s]+$/.test(e))throw 0;
     const r=Function('"use strict";return ('+e+')')();
     if(!isFinite(r))throw 0;
     const out=String(Number(r.toFixed(10)));
-    if(!silent)addHist(fullExpr.replace(/×/g,'×').replace(/÷/g,'÷').replace(/−/g,'−')+' = '+out);
+    if(!silent)addHist(expr+' = '+out);
     cur=out;expr='';justEq=true;
   }catch(e){
-    if(!silent){addHist((expr+cur)+' = 错误');cur='Error';expr='';justEq=true;}
+    if(!silent){addHist(expr+' = 错误');cur='Error';expr='';justEq=true;}
   }
   render();
 }

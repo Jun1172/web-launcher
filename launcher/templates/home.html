@@ -245,7 +245,7 @@ async function openApp(a){
         <span><button onclick="goHome()">🏠 回桌面</button>
         <button onclick="killApp('${a.id}')">✕ 退出</button></span></div>
         <div class="loading">正在拉起进程，等待端口就绪…</div>
-        <iframe style="display:none"></iframe><div class="gz"></div>`;
+        <iframe allow="modals" style="display:none"></iframe><div class="gz"></div>`;
     }
     document.body.appendChild(pg);pages[a.id]=pg;openedOrder.push(a.id);}
   pg.classList.add('show');$('home').classList.add('dim');current=a.id;

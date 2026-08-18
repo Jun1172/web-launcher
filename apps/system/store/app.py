@@ -110,6 +110,14 @@ font-size:12px;cursor:pointer;font-weight:600}
 .__busy{position:fixed;left:50%;top:12px;transform:translateX(-50%);padding:8px 18px;
 background:#5b8cff;border-radius:12px;font-size:13px;font-weight:600;z-index:9999;
 box-shadow:0 6px 24px rgba(0,0,0,.4)}
+/* ── 确认对话框（替代原生 confirm，避免 iframe 中被浏览器拦截）── */
+.confirm-modal{width:min(380px,92vw);padding:20px;gap:16px}
+.confirm-modal h2{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.confirm-modal .msg{font-size:13px;line-height:1.7;opacity:.85;white-space:pre-line}
+.confirm-modal .modalFoot{margin-top:4px}
+.btnPri{background:#e74c3c;color:#fff;border:0;padding:8px 18px;border-radius:12px;
+font-size:12px;cursor:pointer;font-weight:600}
+.btnPri:hover{background:#ec5e50}
 </style>
 </head>
 <body>
@@ -130,6 +138,18 @@ box-shadow:0 6px 24px rgba(0,0,0,.4)}
 <input class="search" id="search" placeholder="🔍 搜索应用…" oninput="filterApps()">
 
 <div class="app-list" id="list"></div>
+
+<!-- 确认弹窗（替代原生 confirm，避免 iframe 中被浏览器拦截） -->
+<div class="modalMask" id="confirmMask" role="dialog">
+  <div class="modal confirm-modal">
+    <h2 id="confirmTitle">确认操作</h2>
+    <div class="msg" id="confirmMsg"></div>
+    <div class="modalFoot">
+      <button class="btnGhost" id="confirmCancel">取消</button>
+      <button class="btnPri" id="confirmOk">确定</button>
+    </div>
+  </div>
+</div>
 
 <!-- 详情弹窗 -->
 <div class="modalMask" id="detailMask" role="dialog">
@@ -176,6 +196,20 @@ function setBusy(msg){
 function clearBusy(){
   document.querySelectorAll('#list button, .modalFoot button, .verItem button').forEach(b=>b.disabled=false);
   document.getElementById('__busy')?.remove();}
+/* ── 自定义确认对话框（替代原生 confirm，避免 iframe 中被浏览器拦截）── */
+function showConfirm(title,msg){
+  return new Promise(resolve=>{
+    document.getElementById('confirmTitle').textContent=title;
+    document.getElementById('confirmMsg').textContent=msg;
+    const mask=document.getElementById('confirmMask');
+    mask.classList.add('show');
+    const ok=document.getElementById('confirmOk');
+    const cancel=document.getElementById('confirmCancel');
+    const cleanup=(result)=>{mask.classList.remove('show');ok.onclick=null;cancel.onclick=null;resolve(result);};
+    ok.onclick=()=>cleanup(true);
+    cancel.onclick=()=>cleanup(false);
+  });
+}
 
 /* ── 主数据加载 ── */
 async function loadData(){
@@ -328,7 +362,8 @@ document.addEventListener('click',async (e)=>{
 
   // 卸载
   if(action==='uninstall'){
-    if(!confirm('确认卸载该应用吗？\n\n• 运行中的进程将被关闭\n• 应用目录将被删除'))return;
+    if(!(await showConfirm('确认卸载',
+      '确认卸载该应用吗？\n• 运行中的进程将被关闭\n• 应用目录将被删除')))return;
     setBusy('卸载中…');
     try{
       const r=await api('/api/uninstall?id='+encodeURIComponent(id));

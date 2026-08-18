@@ -3,7 +3,7 @@
   "name": "文件就绪 Demo",
   "icon": "📄",
   "color": "#f39c12",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "changelog": "验证 ready_check=file：靠应用主动写 ready 文件判定就绪（ROS2 lifecycle 模式）。",
   "cmd": ["apps/user/file-demo/app.py"],
   "dock": false,

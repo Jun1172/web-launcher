@@ -423,3 +423,8 @@ web-launcher/
 ## 📜 License
 
 MIT
+
+## 强制杀死所有进程
+```
+taskkill /F /IM python.exe
+```

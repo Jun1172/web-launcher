@@ -18,11 +18,12 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from . import config
+from . import app_registry
 from .config import vt
-from .app_registry import REGISTRY, system_apps, user_apps, find_app
+from .app_registry import find_app
 from .process_manager import open_app as pm_open_app, procs
 from .app_operations import (
-    do_install, do_install_version, do_uninstall,
+    do_install, do_uninstall,
     get_launcher_version_info, do_launcher_update,
 )
 from .repo import repo_index
@@ -73,19 +74,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json([
                 {**a, "running": (procs.get(a["id"]) is not None
                                   and procs[a["id"]].poll() is None)}
-                for a in REGISTRY
+                for a in app_registry.REGISTRY
             ])
             return
 
-        # ── 仓库应用对比（含 versions 列表用于回退）──
+        # ── 仓库应用对比 ──
         if path == "/api/repo":
             try:
                 idx = repo_index()
             except Exception as ex:
                 self._json({"error": str(ex), "apps": []})
                 return
-            local_map = {a["id"]: a for a in (system_apps + user_apps)}
-            sys_ids = {s["id"] for s in system_apps}
+            local_map = {a["id"]: a for a in (app_registry.system_apps + app_registry.user_apps)}
+            sys_ids = {s["id"] for s in app_registry.system_apps}
             out = []
             for m in idx.get("apps", []):
                 aid = m["id"]
@@ -95,7 +96,6 @@ class Handler(BaseHTTPRequestHandler):
                 remote_v = m.get("version", "0")
                 out.append({
                     **m,
-                    "versions": m.get("versions", []) or [],
                     "local": loc_v,
                     "system": system,
                     "installed": loc is not None,
@@ -108,14 +108,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/install":
             aid = q.get("id", [None])[0]
             ok, msg = do_install(aid)
-            self._json({"ok": ok, "msg": msg})
-            return
-
-        # ── 安装/回退到指定版本 ──
-        if path == "/api/install-version":
-            aid = q.get("id", [None])[0]
-            version = q.get("version", [None])[0]
-            ok, msg = do_install_version(aid, version)
             self._json({"ok": ok, "msg": msg})
             return
 

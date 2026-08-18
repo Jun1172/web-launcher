@@ -113,14 +113,7 @@ def do_uninstall(aid):
     if not app_dir.exists():
         return False, "未安装"
     close_app(aid)
-    # 删除前先做 .bak（提供一次"反悔"窗口期，保留用户数据 1 次）
-    bak = USER_APPS_DIR / f"{aid}.bak"
-    try:
-        if bak.exists():
-            shutil.rmtree(bak, ignore_errors=True)
-        shutil.move(str(app_dir), str(bak))
-    except Exception:
-        shutil.rmtree(app_dir, ignore_errors=True)
+    shutil.rmtree(app_dir, ignore_errors=True)
     reload_apps()
     return True, "ok"
 
@@ -160,17 +153,11 @@ def get_launcher_version_info():
 
 
 def _atomic_overwrite_file(src_bytes: bytes, target: Path):
-    """写 target.tmp → target.bak → move。用于 launcher.py 与 config.json。"""
+    """直接覆盖 target 文件（不保留 .bak）。"""
     tmp = target.with_suffix(target.suffix + ".tmp.new")
-    bak = target.with_suffix(target.suffix + ".bak")
     tmp.write_bytes(src_bytes)
-    if bak.exists():
-        try:
-            bak.unlink()
-        except Exception:
-            shutil.rmtree(bak, ignore_errors=True)
     if target.exists():
-        shutil.move(str(target), str(bak))
+        target.unlink()
     shutil.move(str(tmp), str(target))
 
 
@@ -225,6 +212,17 @@ def do_launcher_update():
         except Exception as e:
             return False, f"覆盖 launcher.py 失败: {e}", False
 
+    # 2b. 覆盖 launcher/ 包目录（核心代码模块 + templates），不保留 .bak
+    remote_pkg = unzipped / "launcher"
+    if remote_pkg.exists():
+        local_pkg = BASE / "launcher"
+        try:
+            if local_pkg.exists():
+                shutil.rmtree(local_pkg, ignore_errors=True)
+            shutil.copytree(remote_pkg, local_pkg)
+        except Exception as e:
+            return False, f"覆盖 launcher/ 包目录失败: {e}", False
+
     # 3. 备份 + 覆盖 config.json（保留本地 ports/host 等私有字段，仅更新 launcher 部分）
     cfg_path = BASE / "config.json"
     remote_cfg_p = unzipped / "config.json"
@@ -240,7 +238,7 @@ def do_launcher_update():
         except Exception as e:
             return False, f"合并 config.json 失败: {e}", False
 
-    # 4. 备份 + 覆盖 apps/system/* （只覆盖远端存在的那些系统应用）
+    # 4. 覆盖 apps/system/* （只覆盖远端存在的那些系统应用），不保留 .bak
     sys_dir = unzipped / "apps" / "system"
     if sys_dir.exists():
         for sub in sys_dir.iterdir():
@@ -248,15 +246,10 @@ def do_launcher_update():
                 continue
             target = SYSTEM_APPS_DIR / sub.name
             try:
-                # 用 app_operations 中的原子替换思路直接做：先 bak，再 move
-                bak = SYSTEM_APPS_DIR / f"{sub.name}.bak"
-                if bak.exists():
-                    shutil.rmtree(bak, ignore_errors=True)
                 if target.exists():
-                    shutil.move(str(target), str(bak))
+                    shutil.rmtree(target, ignore_errors=True)
                 shutil.copytree(sub, target)
             except Exception as e:
-                # 单 app 失败不影响整个 launcher 更新整体流程
                 print(f"⚠ 更新系统应用 {sub.name} 失败: {e}")
 
     # 5. 清理临时目录

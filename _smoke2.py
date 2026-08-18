@@ -234,7 +234,7 @@ if port_up:
     except Exception as e:
         check("/api/launcher/version", False, str(e))
 
-    # /api/repo 含 versions
+    # /api/repo 应用列表
     try:
         d = http_get("http://127.0.0.1:8000/api/repo")
         api_results["repo"] = d

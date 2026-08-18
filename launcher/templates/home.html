@@ -289,8 +289,15 @@ $('clearAll').onclick=async ()=>{
   const n=openedOrder.length;if(!n)return;
   if(!confirm(`确定关闭所有 ${n} 个运行中的应用？（进程将被回收）`))return;
   const all=[...openedOrder];
-  all.forEach((id,i)=>setTimeout(()=>killApp(id),i*50));
-  setTimeout(()=>showToast(`已关闭 ${all.length} 个后台进程`), all.length*50+200);};
+  for(const id of all){
+    try{await fetch('/api/close?id='+id);}catch(e){}
+    if(pages[id]){pages[id].remove();delete pages[id];}
+  }
+  openedOrder.length=0;
+  if(current){current=null;$('home').classList.remove('dim');}
+  if(recentsOpen)renderRecents();
+  poll();
+  showToast(`已关闭 ${all.length} 个后台进程`);};
 $('closeR').onclick=closeRecents;
 
 /* ── 全局手势：左右翻页、上拉最近任务 ── */

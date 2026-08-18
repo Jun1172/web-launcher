@@ -10,28 +10,29 @@
 """
 import base64
 import hashlib
+import json
 import re
 import shutil
 import urllib.request
 import zipfile
 from pathlib import Path
 
-from .config import REPO_URL, REPO_AUTH, SSL_CTX
+from . import config
 
 
 def repo_get(path):
     """从 REPO_URL/<path> 拉取二进制内容；返回 urllib response（支持 .read()）。"""
-    url = REPO_URL.rstrip("/") + "/" + path
+    url = config.REPO_URL.rstrip("/") + "/" + path
     req = urllib.request.Request(url)
-    if REPO_AUTH:
-        token = base64.b64encode(f"{REPO_AUTH[0]}:{REPO_AUTH[1]}".encode()).decode()
+    if config.REPO_AUTH:
+        token = base64.b64encode(f"{config.REPO_AUTH[0]}:{config.REPO_AUTH[1]}".encode()).decode()
         req.add_header("Authorization", "Basic " + token)
-    return urllib.request.urlopen(req, timeout=20, context=SSL_CTX)
+    return urllib.request.urlopen(req, timeout=20, context=config.SSL_CTX)
 
 
 def repo_index():
     """读取远端 index.json，返回 dict。失败抛异常由调用方处理。"""
-    return __import__("json").loads(repo_get("index.json").read().decode("utf-8"))
+    return json.loads(repo_get("index.json").read().decode("utf-8"))
 
 
 def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None = None):
@@ -46,7 +47,7 @@ def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None
          A. publish.py 格式：apps/{system|user}/<aid>/file...  → 剥离前缀
          B. 旧格式：<aid>/file...                                → 剥离 <aid>/
          C. 扁平格式：file...                                    → 不剥离
-    5. 若旧目录存在 → 先移为 target_dir.bak（可留作失败回滚）
+    5. 若旧目录存在 → 直接删除（不保留 .bak）
     6. move(tmp.new → target_dir)
     7. 清理 zip.tmp
 
@@ -64,7 +65,6 @@ def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None
 
     zip_tmp = target_dir.parent / f"{aid}.zip.tmp"
     tmp_new = target_dir.parent / f"{aid}.tmp.new"
-    bak = target_dir.parent / f"{aid}.bak"
 
     try:
         zip_tmp.write_bytes(data_bytes)
@@ -98,19 +98,12 @@ def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(z.read(n))
 
-            # 原子替换：旧 → bak；tmp.new → target
+            # 原子替换：直接删除旧目录，move 新目录
             if target_dir.exists():
-                if bak.exists():
-                    shutil.rmtree(bak, ignore_errors=True)
-                shutil.move(str(target_dir), str(bak))
+                shutil.rmtree(target_dir, ignore_errors=True)
             shutil.move(str(tmp_new), str(target_dir))
         return True, "ok"
     except Exception as e:
-        try:
-            if bak.exists() and not target_dir.exists():
-                shutil.move(str(bak), str(target_dir))
-        except Exception:
-            pass
         return False, f"解压失败: {e}"
     finally:
         try:

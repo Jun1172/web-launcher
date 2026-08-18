@@ -32,6 +32,7 @@ def load_config():
 
 CONFIG = load_config()
 PUBLISH_CFG = CONFIG.get("publish", {})
+REPO_CFG = CONFIG.get("repo", {})
 SERVER = PUBLISH_CFG.get("server", "jun@172.18.119.215")
 REMOTE = PUBLISH_CFG.get("remote_path", "/var/www/repo")
 PACKAGES_DIR = PUBLISH_CFG.get("packages_dir", "packages")
@@ -43,6 +44,34 @@ def sha256(path):
         for chunk in iter(lambda: f.read(1 << 16), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _ensure_remote_dirs():
+    """确保远端 packages/ 目录存在（scp 不会自动创建多级目录）。"""
+    try:
+        subprocess.run(
+            ["ssh", SERVER, f"mkdir -p {REMOTE}/{PACKAGES_DIR}"],
+            check=False, capture_output=True, timeout=15,
+        )
+    except Exception as e:
+        print(f"  ⚠ ssh mkdir 失败（可能目录已存在）: {e}")
+
+
+def _verify_upload(pkg_path):
+    """上传后通过 HTTP HEAD 验证文件是否可访问。返回 True/False。"""
+    import urllib.request, ssl
+    url = REPO_CFG.get("url", "").rstrip("/") + "/" + pkg_path
+    ctx = ssl.create_default_context()
+    if not REPO_CFG.get("verify_ssl", False):
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    try:
+        req = urllib.request.Request(url, method="HEAD")
+        urllib.request.urlopen(req, timeout=10, context=ctx)
+        return True
+    except Exception as e:
+        print(f"  ⚠ HTTP 验证失败 ({pkg_path}): {e}")
+        return False
 
 
 def discover_apps(kind="all"):
@@ -110,34 +139,7 @@ def build_entry(meta, zip_path):
     return entry
 
 
-MAX_VERSIONS = 1   # 每个应用只保留最近 1 个历史版本（供回退），不过度复杂
-
-
-def _add_to_versions(existing_entry: dict | None, new_entry: dict) -> list:
-    """把 existing_entry 的版本信息存入 versions，返回合并后的 versions 列表。
-
-    - existing_entry = 原 index.json 里的当前版本（若有）
-    - versions 每元素: {version, pkg, sha256, changelog, released}
-    - 规则: 若 existing_entry.version == new_entry.version，不重复保留；否则前置
-    - 按时间倒序，超 MAX_VERSIONS 截断
-    """
-    versions = list((existing_entry or {}).get("versions", []) or [])
-    if existing_entry and existing_entry.get("version") != new_entry["version"]:
-        # 把旧当前版本降级为历史
-        history = {
-            "version": existing_entry.get("version"),
-            "pkg": existing_entry.get("pkg"),
-            "sha256": existing_entry.get("sha256"),
-            "changelog": existing_entry.get("changelog", ""),
-            "released": existing_entry.get("released", ""),
-            "size": existing_entry.get("size"),
-        }
-        if history["version"] and history["pkg"]:
-            # 去重（按 version）
-            versions = [v for v in versions if v.get("version") != history["version"]]
-            versions.insert(0, history)
-    # 最新在前，超过上限删除
-    return versions[:MAX_VERSIONS]
+MAX_VERSIONS = 0   # 不保留历史版本，已移除版本回退功能
 
 
 def publish_one(app_dir, *, upload=True, index_override=None):
@@ -190,6 +192,7 @@ def publish_one(app_dir, *, upload=True, index_override=None):
     index_tmp = None
 
     if upload:
+        _ensure_remote_dirs()
         print(f"🚀 上传 {zip_name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
         try:
             subprocess.run(
@@ -201,14 +204,14 @@ def publish_one(app_dir, *, upload=True, index_override=None):
             zip_path.unlink(missing_ok=True)
             return False, None, None
         print(f"   ✓ 上传完成")
+        if not _verify_upload(entry["pkg"]):
+            print(f"  ⚠ 上传后 HTTP 验证失败，文件可能不可访问")
 
         # 拉 / 更新 index
         if index is None:
             print("📋 更新远端 index.json...")
             index, index_tmp = ensure_index()
-        # 合并 entry：原当前版本降级为历史 versions
-        old_entry = next((a for a in index.get("apps", []) if a["id"] == meta["id"]), None)
-        entry["versions"] = _add_to_versions(old_entry, entry)
+        # 直接替换同 id 条目（不保留历史版本）
         index["apps"] = [a for a in index.get("apps", []) if a["id"] != meta["id"]] + [entry]
         index["updated"] = datetime.datetime.now().isoformat()
 
@@ -261,7 +264,8 @@ def parse_args():
 
 def build_launcher_zip(version: str, changelog: str) -> Path:
     """把 launcher 基础文件打包成 zip：
-    包含: launcher.py, config.json（去除 publish 等敏感字段）, apps 骨架, 基础工具
+    包含: launcher.py, launcher/ 包目录（核心代码）, config.json（去除敏感字段）,
+          apps/publish.py, apps/system/ 系统应用
     返回 zip 文件路径（BASE/launcher-<version>.zip）
     """
     # launcher 核心文件（相对 BASE）
@@ -272,6 +276,13 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
         "apps/publish.py",
         "apps/README.md",
     ]
+    # launcher/ 包目录：所有 .py 模块 + templates/ 模板文件
+    launcher_pkg_dir = BASE / "launcher"
+    launcher_pkg_files = []
+    if launcher_pkg_dir.exists():
+        for p in launcher_pkg_dir.rglob("*"):
+            if p.is_file() and not (p.suffix == ".pyc" or p.name == "__pycache__"):
+                launcher_pkg_files.append(p.relative_to(BASE))
     # apps/system/ 系统应用目录骨架（每个系统应用的全部文件）
     system_apps_dir = APPS_DIR / "system"
     system_files = []
@@ -281,6 +292,7 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
                 system_files.append(p.relative_to(BASE))
 
     files = [Path(p) for p in include_patterns if (BASE / p).exists()]
+    files += launcher_pkg_files
     files += system_files
 
     zip_path = BASE / f"launcher-{version}.zip"
@@ -333,6 +345,7 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
     index_tmp = None
 
     if upload:
+        _ensure_remote_dirs()
         print(f"🚀 上传 {zip_path.name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
         try:
             subprocess.run(
@@ -344,11 +357,12 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
             zip_path.unlink(missing_ok=True)
             return False
 
+        print(f"   ✓ 上传完成")
+        if not _verify_upload(entry["pkg"]):
+            print(f"  ⚠ 上传后 HTTP 验证失败，文件可能不可访问")
+
         print("📋 更新远端 index.json...")
         index, index_tmp = ensure_index()
-        # launcher 同样支持历史版本回退
-        old_launcher = index.get("launcher") or None
-        entry["versions"] = _add_to_versions(old_launcher, entry)
         index["launcher"] = entry
         index["updated"] = datetime.datetime.now().isoformat()
         write_and_upload_index(index, index_tmp)

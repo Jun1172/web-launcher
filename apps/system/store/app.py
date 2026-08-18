@@ -147,10 +147,6 @@ box-shadow:0 6px 24px rgba(0,0,0,.4)}
       <h4>📋 更新说明 (Changelog)</h4>
       <div class="clArea"><ul id="dChangelog"></ul></div>
     </div>
-    <div class="sectionBox">
-      <h4>🕒 历史版本（可回退）</h4>
-      <div class="verScroll" id="dVersions">暂无历史版本</div>
-    </div>
     <div class="modalFoot">
       <button class="btnGhost" onclick="closeDetail()">关闭</button>
     </div>
@@ -193,7 +189,6 @@ async function loadData(){
       const system=!!(local&&local.system)||!!m.system;
       return{
         ...m,
-        versions:Array.isArray(m.versions)?m.versions:[],
         installed:!!local,
         system,
         upgradable:!!local&&compareVer(m.version,local.version)>0,
@@ -296,32 +291,13 @@ function openDetail(id){
       <div class="sub">${esc(String(c.sub))}</div>
     </div>`).join('');
   document.getElementById('dChangelog').innerHTML=clUL(app.changelog);
-  // 历史版本：只保留 1 版可回退（MAX_VERSIONS=1），不显示完整列表
-  const box=document.getElementById('dVersions');
-  const prev=(app.versions&&app.versions.length)?app.versions[0]:null;
-  if(!prev){
-    box.innerHTML='<div style="opacity:.4;font-size:12px;padding:8px">暂无可回退的历史版本</div>';
-  }else{
-    const isCur=app.installed&&app.localVersion===prev.version;
-    box.innerHTML=`<div class="verItem ${isCur?'current':''}">
-      <div class="vi">v${esc(prev.version)}</div>
-      <div class="vr">
-        ${fmtTime(prev.released)} · ${fmtSize(prev.size)}
-        <small>${esc((prev.changelog||'').split('\n')[0]||'无说明')}</small>
-      </div>
-      ${isCur
-        ?'<button class="btnCurrent" disabled>当前版本</button>'
-        :`<button class="btnRollback" data-action="rollback" data-id="${app.id}"
-                data-version="${esc(prev.version)}">⏮ 回退到此版本</button>`}
-    </div>`;
-  }
   document.getElementById('detailMask').classList.add('show');
 }
 function closeDetail(){document.getElementById('detailMask').classList.remove('show');DETAIL_APP=null;}
 document.getElementById('detailMask').addEventListener('click',e=>{if(e.target.id==='detailMask')closeDetail();});
 window.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail();});
 
-/* ── 事件委托（安装/升级/卸载/详情/回退）── */
+/* ── 事件委托（安装/升级/卸载/详情）── */
 document.addEventListener('click',async (e)=>{
   const btn=e.target.closest('button[data-action]');
   if(!btn)return;
@@ -352,32 +328,12 @@ document.addEventListener('click',async (e)=>{
 
   // 卸载
   if(action==='uninstall'){
-    if(!confirm('确认卸载该应用吗？\n\n• 运行中的进程将被关闭\n• 目录将被移至 .bak 备份（一次回滚窗口）'))return;
+    if(!confirm('确认卸载该应用吗？\n\n• 运行中的进程将被关闭\n• 目录将被移至 .bak 备份'))return;
     setBusy('卸载中…');
     try{
       const r=await api('/api/uninstall?id='+encodeURIComponent(id));
       clearBusy();
       if(r.ok){loadData();} else alert('卸载失败：'+r.msg);
-    }catch(ex){clearBusy();alert('请求失败：'+ex.message);}
-    return;
-  }
-
-  // 回退（详情弹窗历史版本按钮）
-  if(action==='rollback'){
-    const version=btn.dataset.version;
-    if(!version)return;
-    const sameLatest=repoApps.find(a=>a.id===id)?.version===version;
-    const verb=sameLatest?'安装':'回退';
-    if(!confirm(`确认${verb}到版本 v${version}？\n\n• 当前应用进程会被关闭\n• 代码目录将被原子替换为 ${version} 版本\n• 用户数据不会被删除`))return;
-    setBusy(`${verb}中：下载 v${version} + 校验 + 原子覆盖…`);
-    try{
-      const r=await api('/api/install-version?id='+encodeURIComponent(id)+'&version='+encodeURIComponent(version));
-      clearBusy();
-      if(r.ok){
-        alert(`✅ 成功${verb}到 v${version}`);
-        loadData();
-        if(DETAIL_APP && DETAIL_APP.id===id)openDetail(id); // 刷新详情视图
-      }else alert('操作失败：'+r.msg);
     }catch(ex){clearBusy();alert('请求失败：'+ex.message);}
     return;
   }

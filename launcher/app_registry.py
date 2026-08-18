@@ -42,12 +42,18 @@ def resolve_cmd(meta):
 
 
 def _scan_apps(root, *, system):
-    """扫描 root/*/app.json，返回 [{meta with id, system, cmd resolved}, ...]。"""
+    """扫描 root/*/app.json，返回 [{meta with id, system, cmd resolved}, ...]。
+
+    跳过 .bak / .tmp.new / .zip.tmp 等非应用目录，避免备份目录被当成应用。
+    """
     apps = []
     if not root.exists():
         return apps
     for d in sorted(root.iterdir()):
         if not d.is_dir():
+            continue
+        # 跳过备份/临时目录（原子替换产生的 .bak/.tmp.new 等）
+        if d.name.endswith((".bak", ".tmp.new", ".zip.tmp")):
             continue
         app_json = d / "app.json"
         if not app_json.exists():

@@ -100,12 +100,12 @@ async function loadData(){
     installedApps=apps;
     repoApps=repo.apps.map(m=>{
       const local=apps.find(a=>a.id===m.id);
-      const system=local&&local.system;
+      const system=!!(local&&local.system) || !!m.system;
       return{
         ...m,
         installed:!!local,
-        system:!!system,
-        upgradable:!!local&&!system && compareVer(m.version,local.version)>0,
+        system,
+        upgradable:!!local && compareVer(m.version,local.version)>0,
         localVersion:local?local.version:null
       };
     });
@@ -158,57 +158,109 @@ function render(){
   list.forEach(app=>box.appendChild(renderCard(app)));
 }
 
+function htmlEscape(s){
+  return (s||'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtSize(n){
+  if(!n)return '';
+  return n<1024?(n+' B'):(n/1024).toFixed(1)+' KB';
+}
+function setBusy(id,msg){
+  const box=document.getElementById('list');
+  box.querySelectorAll('button').forEach(b=>b.disabled=true);
+  const label=document.createElement('div');
+  label.id='__busy';
+  label.style.cssText='position:fixed;left:50%;top:12px;transform:translateX(-50%);padding:8px 18px;background:#5b8cff;border-radius:12px;font-size:13px;font-weight:600;z-index:999;box-shadow:0 6px 24px rgba(0,0,0,.4)';
+  label.textContent=msg;
+  document.body.appendChild(label);
+}
+function clearBusy(){
+  const box=document.getElementById('list');
+  box.querySelectorAll('button').forEach(b=>b.disabled=false);
+  document.getElementById('__busy')?.remove();
+}
+
 function renderCard(app){
   const d=document.createElement('div');d.className='app-card';
   const tag=app.system?'<span class="app-tag">系统</span>':'';
   const verInfo=app.installed
     ?(app.upgradable?`<span style="color:#00cec9">${app.localVersion} → ${app.version}</span>`:`<span style="opacity:.45">v${app.version}</span>`)
     :`<span style="opacity:.45">v${app.version}</span>`;
-  
+  const desc=htmlEscape(app.changelog||'暂无描述');
+
   let action='';
   if(app.system && app.installed){
     if(app.upgradable){
-      action=`<button class="btn btn-upgrade" onclick="doInstall('${app.id}')">升级</button>`;
+      action=`<button class="btn btn-upgrade" data-action="upgrade" data-id="${app.id}">升级</button>`;
     }else{
       action=`<button class="btn btn-system" disabled>✓ 系统应用</button>`;
     }
   }else if(!app.installed){
-    action=`<button class="btn btn-install" onclick="doInstall('${app.id}')">安装</button>`;
+    action=`<button class="btn btn-install" data-action="install" data-id="${app.id}">安装</button>`;
   }else if(app.upgradable){
-    action=`<button class="btn btn-upgrade" onclick="doInstall('${app.id}')">升级</button>
-            <button class="btn btn-uninstall" onclick="doUninstall('${app.id}')">卸载</button>`;
+    action=`<button class="btn btn-upgrade" data-action="upgrade" data-id="${app.id}">升级</button>
+            <button class="btn btn-uninstall" data-action="uninstall" data-id="${app.id}">卸载</button>`;
   }else{
     action=`<button class="btn btn-disabled" disabled>✓ 已安装</button>
-            <button class="btn btn-uninstall" onclick="doUninstall('${app.id}')">卸载</button>`;
+            <button class="btn btn-uninstall" data-action="uninstall" data-id="${app.id}">卸载</button>`;
   }
-  
+
   d.innerHTML=`
     <div class="app-icon" style="background:linear-gradient(160deg,${app.color}33,${app.color}11)">${app.icon}</div>
     <div class="app-info">
       <div class="app-name">${app.name}${tag}</div>
-      <div class="app-desc">${app.changelog||'暂无描述'}</div>
-      <div class="app-meta">${verInfo} · ${app.size?(app.size<1024?app.size+' B':(app.size/1024).toFixed(1)+' KB'):''}</div>
+      <div class="app-desc" style="white-space:pre-wrap;line-height:1.5">${desc}</div>
+      <div class="app-meta">${verInfo} · ${fmtSize(app.size)}</div>
     </div>
     <div class="app-actions" style="display:flex;gap:6px">${action}</div>
   `;
   return d;
 }
 
-async function doInstall(id){
-  try{
-    const r=await api('/api/install?id='+encodeURIComponent(id));
-    if(r.ok){loadData();}
-    else{alert('安装失败：'+r.msg);}
-  }catch(e){alert('请求失败：'+e.message);}
-}
-
-async function doUninstall(id){
-  try{
-    const r=await api('/api/uninstall?id='+encodeURIComponent(id));
-    if(r.ok){loadData();}
-    else{alert('卸载失败：'+r.msg);}
-  }catch(e){alert('请求失败：'+e.message);}
-}
+// 事件委托，避免 innerHTML 重写时丢失按钮引用，避免 setInterval 回调触发 React #185 警告
+document.addEventListener('click',async (e)=>{
+  const btn=e.target.closest('button[data-action]');
+  if(!btn)return;
+  const id=btn.dataset.id, action=btn.dataset.action;
+  if(action==='install'||action==='upgrade'){
+    setBusy(id,action==='upgrade'?'升级中：下载 + 校验 + 重启应用…':'安装中…');
+    try{
+      const r=await api('/api/install?id='+encodeURIComponent(id));
+      clearBusy();
+      if(r.ok){
+        // store 本身升级：后端 close_app 会杀 store 进程，iframe 直接整个 reload
+        if(id==='store' && action==='upgrade'){
+          alert('✅ 应用商店升级完成，页面将刷新以载入新版本');
+          setTimeout(()=>location.reload(),600);
+          return;
+        }
+        loadData();
+      }else{
+        alert('操作失败：'+r.msg);
+      }
+    }catch(ex){
+      clearBusy();
+      // store 升级 / 安装 时，store 进程被杀，网络先断是预期情况 → 直接 reload
+      if(action==='upgrade' && id==='store'){
+        setTimeout(()=>location.reload(),600);
+        return;
+      }
+      alert('请求失败：'+ex.message);
+    }
+  }else if(action==='uninstall'){
+    if(!confirm('确认卸载该应用吗？（运行中的进程会被关闭）'))return;
+    setBusy(id,'卸载中…');
+    try{
+      const r=await api('/api/uninstall?id='+encodeURIComponent(id));
+      clearBusy();
+      if(r.ok){loadData();}
+      else{alert('卸载失败：'+r.msg);}
+    }catch(ex){
+      clearBusy();
+      alert('请求失败：'+ex.message);
+    }
+  }
+});
 
 function showError(msg){
   document.getElementById('list').innerHTML=`<div class="error">${msg}</div>`;

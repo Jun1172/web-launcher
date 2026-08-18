@@ -328,12 +328,13 @@ document.addEventListener('click',async (e)=>{
 
   // 卸载
   if(action==='uninstall'){
-    if(!confirm('确认卸载该应用吗？\n\n• 运行中的进程将被关闭\n• 目录将被移至 .bak 备份'))return;
+    if(!confirm('确认卸载该应用吗？\n\n• 运行中的进程将被关闭\n• 应用目录将被删除'))return;
     setBusy('卸载中…');
     try{
       const r=await api('/api/uninstall?id='+encodeURIComponent(id));
       clearBusy();
-      if(r.ok){loadData();} else alert('卸载失败：'+r.msg);
+      if(r.ok){loadData();}
+      else alert('卸载失败：'+r.msg);
     }catch(ex){clearBusy();alert('请求失败：'+ex.message);}
     return;
   }

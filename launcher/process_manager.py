@@ -43,16 +43,24 @@ def _popen_kwargs():
 def open_app(app):
     """启动应用进程（若未运行），等待端口就绪。成功 True，超时 False。
 
-    app 需包含 'cmd' 与 'port' 字段。无 cmd（纯 stub）直接成功。
+    app 需包含 'cmd' 字段。
+    - 有 cmd 且有 port: 启动进程 + 等待端口就绪
+    - 有 cmd 无 port: 启动进程即视为就绪（后台进程类应用）
+    - 无 cmd（纯 stub）: 直接成功
     """
     if not app.get("cmd"):
         return True
-    p = procs.get(app["id"])
+    aid = app["id"]
+    p = procs.get(aid)
     if p and p.poll() is None:
-        return True  # 已在运行
+        return True
     p = subprocess.Popen(app["cmd"], **_popen_kwargs())
-    procs[app["id"]] = p
-    return port_ready(app["port"])
+    procs[aid] = p
+    port = app.get("port")
+    if port:
+        return port_ready(port)
+    # 无 port 的后台进程：直接返回成功
+    return True
 
 
 def _kill_tree_nt(pid):

@@ -126,8 +126,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "url": None})
                 return
             ok = pm_open_app(app)
-            url = (f"http://127.0.0.1:{app['port']}"
-                   if app.get("cmd") else f"/stub?id={app['id']}")
+            # 有 cmd 无 port 的后台进程：返回空 URL（前端不跳转 iframe，保持在桌面）
+            has_cmd = bool(app.get("cmd"))
+            has_port = app.get("port") is not None
+            if not has_cmd:
+                url = f"/stub?id={app['id']}"
+            elif has_port:
+                url = f"http://127.0.0.1:{app['port']}"
+            else:
+                url = None  # 后台进程，无页面可跳转
             self._json({"ok": ok, "url": url if ok else None})
             return
 

@@ -162,17 +162,55 @@ def _atomic_overwrite_file(src_bytes: bytes, target: Path):
 
 
 def do_launcher_update():
-    """下载远端 launcher zip → 校验 → 备份 → 覆盖。返回 (ok, msg, restart_needed)。"""
+    """下载远端 launcher 更新 → 校验 → 执行。返回 (ok, msg, restart_needed)。
+
+    两种模式：
+    - frozen（编译为 .exe）: 下载 binary + 用 updater 替换 + 自动重启
+    - 开发态（python）: 下载 zip + 覆盖文件 + 提示手动重启
+    """
+    import sys
+    is_frozen = getattr(sys, "frozen", False)
+
     try:
         idx = repo_index()
     except Exception as e:
         return False, f"连不上仓库: {e}", False
 
     meta = idx.get("launcher")
-    if not meta or not meta.get("pkg"):
-        return False, "远端无 launcher 发布包", False
+    if not meta:
+        return False, "远端无 launcher 发布", False
 
-    pkg = meta["pkg"]
+    # ── 编译态：下载 binary ──
+    if is_frozen:
+        binary_pkg = meta.get("binary") or meta.get("pkg")
+        if not binary_pkg:
+            return False, "远端无 launcher 二进制包", False
+        sha = meta.get("sha256")
+        try:
+            data = repo_get(binary_pkg).read()
+        except Exception as e:
+            return False, f"下载失败: {e}", False
+        if sha:
+            import hashlib
+            if hashlib.sha256(data).hexdigest() != sha:
+                return False, "sha256 校验失败", False
+        # 写入 launcher.new
+        exe_dir = Path(sys.executable).parent
+        new_exe = exe_dir / "launcher.new"
+        new_exe.write_bytes(data)
+        # 安排自更新
+        from . import updater
+        ok, msg = updater.launch_self_update(
+            f"{config.REPO_URL.rstrip('/')}/{binary_pkg}"
+        )
+        if ok:
+            return True, "更新已下载，程序将自动重启", True
+        return False, msg, False
+
+    # ── 开发态：下载 zip ──
+    pkg = meta.get("pkg")
+    if not pkg:
+        return False, "远端无 launcher zip 包", False
     sha = meta.get("sha256")
     try:
         data = repo_get(pkg).read()

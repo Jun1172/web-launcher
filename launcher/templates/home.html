@@ -232,34 +232,67 @@ function updateDots(){
 async function openApp(a){
   let pg=pages[a.id];if(!pg){
     pg=document.createElement('div');pg.className='page';
-    pg.innerHTML=`<div class="bar"><span>${esc(a.icon)} ${esc(a.name)}</span>
-      <span><button onclick="goHome()">🏠 回桌面</button>
-      <button onclick="killApp('${a.id}')">✕ 退出</button></span></div>
-      <div class="loading">正在拉起进程，等待端口就绪…</div>
-      <iframe style="display:none"></iframe><div class="gz"></div>`;
+    // 后台进程（有 cmd 无 port）：不创建 iframe，显示进度提示
+    const isBg=!a.cmd||(a.cmd&&a.port==null);
+    if(isBg){
+      pg.innerHTML=`<div class="bar"><span>${esc(a.icon)} ${esc(a.name)}</span>
+        <span><button onclick="goHome()">🏠 回桌面</button>
+        <button onclick="killApp('${a.id}')">✕ 退出</button></span></div>
+        <div class="loading">正在启动 ${esc(a.name)}…</div>
+        <div style="text-align:center;margin-top:40px;opacity:.6">${esc(a.name)} 后台运行中</div>`;
+    }else{
+      pg.innerHTML=`<div class="bar"><span>${esc(a.icon)} ${esc(a.name)}</span>
+        <span><button onclick="goHome()">🏠 回桌面</button>
+        <button onclick="killApp('${a.id}')">✕ 退出</button></span></div>
+        <div class="loading">正在拉起进程，等待端口就绪…</div>
+        <iframe style="display:none"></iframe><div class="gz"></div>`;
+    }
     document.body.appendChild(pg);pages[a.id]=pg;openedOrder.push(a.id);}
   pg.classList.add('show');$('home').classList.add('dim');current=a.id;
   const wasRunning=a.running;
   const j=await (await fetch('/api/open?id='+a.id)).json();
   const iframe=pg.querySelector('iframe'),ld=pg.querySelector('.loading');
-  if(j.ok&&(!wasRunning||!iframe.src)){
-    iframe.src=j.url+(j.url.includes('?')?'&':'?')+'t='+Date.now();
-    iframe.onload=()=>{ld.style.display='none';iframe.style.display='block';};
-  }else{ld.style.display='none';iframe.style.display='block';}
+  if(j.url){
+    if(j.ok&&(!wasRunning||!iframe.src)){
+      iframe.src=j.url+(j.url.includes('?')?'&':'?')+'t='+Date.now();
+      iframe.onload=()=>{ld.style.display='none';iframe.style.display='block';};
+    }else{ld.style.display='none';iframe.style.display='block';}
+  }else{
+    // 无 URL（后台进程）：直接标记就绪
+    ld.style.display='none';
+  }
   poll();}
 function goHome(){if(recentsOpen)return closeRecents();
   if(!current)return;pages[current].classList.remove('show');
   $('home').classList.remove('dim');current=null;}
 async function killApp(id){
-  // 动画：若卡片存在，fadeOut 后再删除 DOM/进程
   const card=document.querySelector(`#rCards .card[data-id="${id}"]`);
   if(card){card.classList.add('fadeOut');}
-  await fetch('/api/close?id='+id);
-  setTimeout(()=>{
-    if(pages[id]){pages[id].remove();delete pages[id];
-      const idx=openedOrder.indexOf(id);if(idx>=0)openedOrder.splice(idx,1);}
+  try{await fetch('/api/close?id='+id);}catch(e){}
+  if(pages[id]){
+    // 1. 断开 iframe（about:blank 停止 React 渲染）
+    const iframe=pages[id].querySelector('iframe');
+    if(iframe){
+      const done=new Promise(res=>{
+        iframe.onload=()=>{iframe.remove();res();};
+        iframe.src='about:blank';
+        setTimeout(res,300); // 保底超时
+      });
+      await done;
+    }
+    // 2. 隐藏 + 延迟删除
+    pages[id].style.display='none';
+    setTimeout(()=>{
+      if(pages[id]&&!pages[id].parentElement)return;
+      if(pages[id]){pages[id].remove();delete pages[id];}
+      const idx=openedOrder.indexOf(id);if(idx>=0)openedOrder.splice(idx,1);
+      if(current===id){current=null;$('home').classList.remove('dim');}
+      if(recentsOpen)renderRecents();poll();},50);
+  }else{
+    const idx=openedOrder.indexOf(id);if(idx>=0)openedOrder.splice(idx,1);
     if(current===id){current=null;$('home').classList.remove('dim');}
-    if(recentsOpen)renderRecents();poll();},180);}
+    if(recentsOpen)renderRecents();poll();}
+}
 
 /* ── 最近任务（单卡上滑+动画+全部清除确认）── */
 function openRecents(){recentsOpen=true;renderRecents();$('recents').classList.add('show');}
@@ -289,15 +322,30 @@ $('clearAll').onclick=async ()=>{
   const n=openedOrder.length;if(!n)return;
   if(!confirm(`确定关闭所有 ${n} 个运行中的应用？（进程将被回收）`))return;
   const all=[...openedOrder];
+  // 1. 先清空所有 iframe（about:blank 停止 React）
+  for(const id of all){
+    if(pages[id]){
+      const iframe=pages[id].querySelector('iframe');
+      if(iframe){iframe.src='about:blank';}
+      pages[id].style.display='none';
+    }
+  }
+  // 2. 等待 iframe 切换完成
+  await new Promise(r=>setTimeout(r,250));
+  // 3. 关闭所有后端进程
   for(const id of all){
     try{await fetch('/api/close?id='+id);}catch(e){}
-    if(pages[id]){pages[id].remove();delete pages[id];}
   }
-  openedOrder.length=0;
-  if(current){current=null;$('home').classList.remove('dim');}
-  if(recentsOpen)renderRecents();
-  poll();
-  showToast(`已关闭 ${all.length} 个后台进程`);};
+  // 4. 延迟后真正删除 DOM
+  setTimeout(()=>{
+    for(const id of all){
+      if(pages[id]){pages[id].remove();delete pages[id];}
+    }
+    openedOrder.length=0;
+    if(current){current=null;$('home').classList.remove('dim');}
+    if(recentsOpen)renderRecents();
+    poll();
+    showToast(`已关闭 ${all.length} 个后台进程`);},100);};
 $('closeR').onclick=closeRecents;
 
 /* ── 全局手势：左右翻页、上拉最近任务 ── */

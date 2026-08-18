@@ -257,6 +257,7 @@ def parse_args():
     g.add_argument("--user", action="store_true", help="仅发布用户应用")
     g.add_argument("--list", action="store_true", help="列出所有可发布的应用")
     g.add_argument("--launcher", action="store_true", help="打包并发布 launcher 主程序更新")
+    parser.add_argument("--build", action="store_true", help="编译 launcher 为可执行二进制（配合 --launcher）")
     parser.add_argument("--dry-run", action="store_true", help="只打包不上传（测试打包）")
     parser.add_argument("--changelog", type=str, default="", help="launcher 更新说明（配合 --launcher 使用）")
     return parser.parse_args()
@@ -318,8 +319,11 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
     return zip_path
 
 
-def publish_launcher(*, upload: bool, changelog: str = ""):
-    """发布 launcher 主程序更新"""
+def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
+    """发布 launcher 主程序更新
+
+    build: 同时编译为可执行二进制并上传。
+    """
     version = CONFIG.get("launcher", {}).get("version")
     if not version:
         print("❌ config.json 的 launcher.version 未配置，无法发布 launcher 更新")
@@ -341,6 +345,30 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
         "sha256": sha256(zip_path),
         "released": datetime.datetime.now().isoformat(),
     }
+
+    # ── 可选：编译二进制 ──
+    binary_path = None
+    if build:
+        try:
+            print(f"🔨 编译 launcher 二进制...")
+            from apps.build_launcher import build as do_build
+            binary_path = do_build(clean=True)
+            if binary_path:
+                binary_name = f"launcher-{version}" + (
+                    ".exe" if sys.platform == "win32" else ""
+                )
+                # 复制到 packages 目录便于上传
+                pkg_dir = BASE / PACKAGES_DIR
+                pkg_dir.mkdir(parents=True, exist_ok=True)
+                dest = pkg_dir / binary_name
+                shutil.copy2(binary_path, dest)
+                print(f"   ✓ {binary_name} ({dest.stat().st_size} bytes)")
+                entry["binary"] = f"{PACKAGES_DIR}/{binary_name}"
+                entry["binary_sha256"] = sha256(dest)
+                entry["binary_size"] = dest.stat().st_size
+        except Exception as e:
+            print(f"  ⚠ 编译失败（仍发布 zip）: {e}")
+
     index = None
     index_tmp = None
 
@@ -360,6 +388,24 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
         print(f"   ✓ 上传完成")
         if not _verify_upload(entry["pkg"]):
             print(f"  ⚠ 上传后 HTTP 验证失败，文件可能不可访问")
+
+        # 上传二进制
+        if build and binary_path and "binary" in entry:
+            bin_file = BASE / entry["binary"]
+            print(f"🚀 上传 {bin_file.name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
+            try:
+                subprocess.run(
+                    ["scp", str(bin_file), f"{SERVER}:{REMOTE}/{PACKAGES_DIR}/"],
+                    check=True, capture_output=True, text=True, timeout=300,
+                )
+                print(f"   ✓ 上传完成")
+                if not _verify_upload(entry["binary"]):
+                    print(f"  ⚠ 二进制 HTTP 验证失败")
+            except subprocess.CalledProcessError as e:
+                print(f"  ⚠ 二进制上传失败: {e.stderr or e.stdout or e}")
+                del entry["binary"]
+                del entry["binary_sha256"]
+                del entry["binary_size"]
 
         print("📋 更新远端 index.json...")
         index, index_tmp = ensure_index()
@@ -381,7 +427,11 @@ def main():
 
     # --launcher
     if args.launcher:
-        ok = publish_launcher(upload=not args.dry_run, changelog=args.changelog)
+        ok = publish_launcher(
+            upload=not args.dry_run,
+            changelog=args.changelog,
+            build=args.build,
+        )
         sys.exit(0 if ok else 4)
 
     # 列出所有 / 无参数时列出

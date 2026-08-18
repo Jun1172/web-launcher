@@ -5,3 +5,5 @@ build
 apps/user/file-demo/var
 *.log
 *.zip
+*.spec
+dist

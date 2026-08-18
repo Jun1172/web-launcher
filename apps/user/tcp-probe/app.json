@@ -1,0 +1,15 @@
+{
+  "id": "tcp-probe",
+  "name": "TCP Probe",
+  "icon": "🔌",
+  "color": "#3498db",
+  "version": "1.0.0",
+  "changelog": "验证 ready_check=tcp：裸 socket 服务（非 HTTP）；测试 failure 重启策略。",
+  "port": 8120,
+  "cmd": ["apps/user/tcp-probe/app.py"],
+  "dock": false,
+  "system": false,
+  "ready_check": {"type": "tcp", "port": 8120, "timeout": 4},
+  "restart_policy": {"on": "failure", "max_retries": 3, "delay": 2},
+  "stop_timeout": 5
+}

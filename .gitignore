@@ -3,3 +3,4 @@ _index.json
 build
 .trae
 apps/user/file-demo/var
+*.log

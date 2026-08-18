@@ -101,12 +101,43 @@ def build_entry(meta, zip_path):
     FIELDS = ("id", "name", "icon", "color", "version", "changelog",
               "port", "cmd", "dock", "system",
               "ready_check", "workdir", "stop_signal", "stop_timeout",
-              "restart_policy", "requires")
+              "restart_policy", "requires", "released")
     entry = {k: meta[k] for k in FIELDS if k in meta}
     entry["pkg"] = f"{PACKAGES_DIR}/{zip_path.name}"
     entry["size"] = zip_path.stat().st_size
     entry["sha256"] = sha256(zip_path)
+    entry.setdefault("released", datetime.datetime.now().isoformat())
     return entry
+
+
+MAX_VERSIONS = 1   # 每个应用只保留最近 1 个历史版本（供回退），不过度复杂
+
+
+def _add_to_versions(existing_entry: dict | None, new_entry: dict) -> list:
+    """把 existing_entry 的版本信息存入 versions，返回合并后的 versions 列表。
+
+    - existing_entry = 原 index.json 里的当前版本（若有）
+    - versions 每元素: {version, pkg, sha256, changelog, released}
+    - 规则: 若 existing_entry.version == new_entry.version，不重复保留；否则前置
+    - 按时间倒序，超 MAX_VERSIONS 截断
+    """
+    versions = list((existing_entry or {}).get("versions", []) or [])
+    if existing_entry and existing_entry.get("version") != new_entry["version"]:
+        # 把旧当前版本降级为历史
+        history = {
+            "version": existing_entry.get("version"),
+            "pkg": existing_entry.get("pkg"),
+            "sha256": existing_entry.get("sha256"),
+            "changelog": existing_entry.get("changelog", ""),
+            "released": existing_entry.get("released", ""),
+            "size": existing_entry.get("size"),
+        }
+        if history["version"] and history["pkg"]:
+            # 去重（按 version）
+            versions = [v for v in versions if v.get("version") != history["version"]]
+            versions.insert(0, history)
+    # 最新在前，超过上限删除
+    return versions[:MAX_VERSIONS]
 
 
 def publish_one(app_dir, *, upload=True, index_override=None):
@@ -175,6 +206,9 @@ def publish_one(app_dir, *, upload=True, index_override=None):
         if index is None:
             print("📋 更新远端 index.json...")
             index, index_tmp = ensure_index()
+        # 合并 entry：原当前版本降级为历史 versions
+        old_entry = next((a for a in index.get("apps", []) if a["id"] == meta["id"]), None)
+        entry["versions"] = _add_to_versions(old_entry, entry)
         index["apps"] = [a for a in index.get("apps", []) if a["id"] != meta["id"]] + [entry]
         index["updated"] = datetime.datetime.now().isoformat()
 
@@ -312,6 +346,9 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
 
         print("📋 更新远端 index.json...")
         index, index_tmp = ensure_index()
+        # launcher 同样支持历史版本回退
+        old_launcher = index.get("launcher") or None
+        entry["versions"] = _add_to_versions(old_launcher, entry)
         index["launcher"] = entry
         index["updated"] = datetime.datetime.now().isoformat()
         write_and_upload_index(index, index_tmp)

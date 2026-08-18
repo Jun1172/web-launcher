@@ -3,7 +3,7 @@
   "name": "计算器",
   "icon": "🧮",
   "color": "#9b59b6",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "changelog": "计算器 demo：四则运算 + 历史记录，验证复杂前端 UI 与无持久化场景。",
   "port": 8111,
   "cmd": ["apps/user/calc/app.py"],

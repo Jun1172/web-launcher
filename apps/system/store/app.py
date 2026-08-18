@@ -186,7 +186,7 @@ async function loadData(){
     installedApps=apps;
     repoApps=repo.apps.map(m=>{
       const local=apps.find(a=>a.id===m.id);
-      const system=!!(local&&local.system)||!!m.system;
+      const system=!!(local&&local.system);  // 只认本地 apps/system 目录
       return{
         ...m,
         installed:!!local,

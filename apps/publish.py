@@ -33,7 +33,7 @@ def load_config():
 CONFIG = load_config()
 PUBLISH_CFG = CONFIG.get("publish", {})
 REPO_CFG = CONFIG.get("repo", {})
-SERVER = PUBLISH_CFG.get("server", "jun@172.18.119.215")
+SERVER = PUBLISH_CFG.get("server", "jun@1.15.30.237")
 REMOTE = PUBLISH_CFG.get("remote_path", "/var/www/repo")
 PACKAGES_DIR = PUBLISH_CFG.get("packages_dir", "packages")
 

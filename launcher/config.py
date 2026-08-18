@@ -85,6 +85,25 @@ def reload_config():
 reload_config()
 
 
+def save_repo_config(url, auth_user, auth_pass, verify_ssl):
+    """原子更新 config.json 的 repo 节，然后 reload_config()。
+
+    auth_user 为空 → auth 设 None；否则设 [user, pass]。
+    url 末尾的 / 会被去掉，避免 repo_get 拼接出双斜杠。
+    """
+    cfg = load_config()
+    cfg["repo"] = {
+        "url": str(url or "").rstrip("/"),
+        "auth": [auth_user, auth_pass] if auth_user else None,
+        "verify_ssl": bool(verify_ssl),
+    }
+    new_bytes = json.dumps(cfg, ensure_ascii=False, indent=2).encode("utf-8")
+    tmp = CONFIG_JSON.with_suffix(".json.tmp.new")
+    tmp.write_bytes(new_bytes)
+    tmp.replace(CONFIG_JSON)  # 同盘原子替换
+    reload_config()
+
+
 def vt(version_str):
     """版本字符串 → 三元组 int，便于比较。缺段补 0，非数字忽略。
 

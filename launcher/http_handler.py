@@ -11,6 +11,8 @@
   GET /api/close?id=xxx         → 关闭应用进程树
   GET /api/launcher/version     → launcher 本地 + 远端版本对比
   GET /api/launcher/update      → 执行 launcher 自更新
+  GET /api/repo/config          → 读取仓库地址/认证/SSL 配置
+  POST /api/repo/config         → 保存仓库配置（原子写 config.json + reload）
   GET /stub?id=xxx              → stub 占位页
 """
 import json
@@ -91,7 +93,9 @@ class Handler(BaseHTTPRequestHandler):
             for m in idx.get("apps", []):
                 aid = m["id"]
                 loc = local_map.get(aid)
-                system = (aid in sys_ids) or bool(m.get("system"))
+                # system 只由本地 apps/system 目录决定，不取仓库元数据
+                # （否则仓库 index.json 标 system:true 的用户应用会被误判为不可卸载）
+                system = aid in sys_ids
                 loc_v = loc.get("version") if loc else None
                 remote_v = m.get("version", "0")
                 out.append({
@@ -102,6 +106,17 @@ class Handler(BaseHTTPRequestHandler):
                     "upgradable": bool(loc_v) and vt(remote_v) > vt(loc_v),
                 })
             self._json({"apps": out})
+            return
+
+        # ── 仓库配置（供 settings 应用读写）──
+        if path == "/api/repo/config":
+            auth = config.REPO_AUTH
+            self._json({
+                "url": config.REPO_URL,
+                "auth_user": auth[0] if auth else "",
+                "auth_pass": auth[1] if auth else "",
+                "verify_ssl": config.VERIFY_SSL,
+            })
             return
 
         # ── 安装/升级到最新 ──
@@ -172,3 +187,29 @@ class Handler(BaseHTTPRequestHandler):
             config.LAUNCHER_TITLE, config.LAUNCHER_VERSION,
             config.LAUNCHER_CHANGELOG, config.LAUNCHER_RELEASED,
         ))
+
+    def do_POST(self):  # noqa: N802
+        u = urlparse(self.path)
+        path = u.path
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(body.decode("utf-8") or "{}")
+        except Exception:
+            self._json({"ok": False, "msg": "请求体不是合法 JSON"})
+            return
+
+        # ── 保存仓库配置 ──
+        if path == "/api/repo/config":
+            url = str(data.get("url", "") or "")
+            auth_user = str(data.get("auth_user", "") or "")
+            auth_pass = str(data.get("auth_pass", "") or "")
+            verify_ssl = bool(data.get("verify_ssl", False))
+            try:
+                config.save_repo_config(url, auth_user, auth_pass, verify_ssl)
+                self._json({"ok": True, "msg": "已保存，配置已实时刷新"})
+            except Exception as e:
+                self._json({"ok": False, "msg": f"保存失败: {e}"})
+            return
+
+        self._json({"ok": False, "msg": "未知 POST 路由"})

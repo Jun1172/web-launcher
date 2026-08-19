@@ -5,7 +5,7 @@
   "color": "#f39c12",
   "version": "1.0.0",
   "changelog": "经典 2048 小游戏，方向键 / 滑动操作，本地保存最高分。",
-  "port": 8114,
+  "port": 8113,
   "cmd": ["apps/user/game2048/app.py"],
   "dock": false,
   "system": false

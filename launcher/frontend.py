@@ -13,25 +13,24 @@
 HTML 模板存放在 templates/home.html，通过占位符替换注入动态数据，
 避免本文件中出现 300+ 行的内联字符串（模块化维护性要求 FR-5.4）。
 """
-import sys  # 👈 新增导入
+import sys
 from pathlib import Path
 
-def get_resource_path(relative_path):
-    """获取资源绝对路径，兼容 PyInstaller 打包态"""
-    if getattr(sys, 'frozen', False):
-        # PyInstaller 会将 --add-data 的文件解压到 sys._MEIPASS 目录
-        base_path = Path(sys._MEIPASS)
-    else:
-        base_path = Path(__file__).parent
-    return base_path / relative_path
+# 👇 【修复】明确区分打包态与开发态的模板路径，避免路径重复
+if getattr(sys, 'frozen', False):
+    # 打包态：PyInstaller 会将 --add-data 的文件解压到 sys._MEIPASS
+    # 因为打包命令是 --add-data "launcher/templates;launcher/templates"
+    # 所以临时目录下的结构是 sys._MEIPASS/launcher/templates
+    _TEMPLATES_DIR = Path(sys._MEIPASS) / "launcher" / "templates"
+else:
+    # 开发态：__file__ 是 launcher/frontend.py
+    # 模板就在同级的 templates 目录下
+    _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-# 👇 修改此处，匹配你之前的打包命令 --add-data "launcher/templates;launcher/templates"
-_TEMPLATES_DIR = get_resource_path("launcher/templates")
 _HOME_TEMPLATE_PATH = _TEMPLATES_DIR / "home.html"
 
 # 模板缓存（进程内只读，首次加载后不复用磁盘）
 _HOME_TEMPLATE: str | None = None
-
 
 def _get_home_template() -> str:
     """惰性读取并缓存首页模板 HTML。"""
@@ -39,7 +38,6 @@ def _get_home_template() -> str:
     if _HOME_TEMPLATE is None:
         _HOME_TEMPLATE = _HOME_TEMPLATE_PATH.read_text(encoding="utf-8")
     return _HOME_TEMPLATE
-
 
 def _escape(s):
     """HTML 转义：防止 XSS / 布局错乱。"""

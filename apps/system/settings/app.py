@@ -5,7 +5,7 @@
 - 通过 Launcher 的 GET/POST /api/repo/config 读写 config.json 的 repo 节
 - 保存后 Launcher 立即 reload_config()，无需重启
 """
-import json
+import json, os
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -23,7 +23,7 @@ def load_config():
 
 
 CONFIG = load_config()
-PORT = CONFIG.get("ports", {}).get("settings", 8104)
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 LAUNCHER_HOST = CONFIG.get("launcher", {}).get("host", "127.0.0.1")
 LAUNCHER_PORT = CONFIG.get("launcher", {}).get("port", 8000)
 LAUNCHER_URL = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}"

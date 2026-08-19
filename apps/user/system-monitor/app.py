@@ -13,7 +13,7 @@ import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
-PORT = 8130
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 IS_WIN = platform.system() == "Windows"
 
 # ── 优先用 psutil ──────────────────────────────────────────────

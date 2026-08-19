@@ -3,8 +3,9 @@
 - 验证：复杂游戏逻辑 + 键盘/触摸滑动 + localStorage 存最高分
 """
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import os
 
-PORT = 8114
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 
 HTML = r"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">

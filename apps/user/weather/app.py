@@ -6,8 +6,9 @@
 import json
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+import os
 
-PORT = 8113
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 
 # ── mock 数据 ───────────────────────────────────────────
 CITIES = [

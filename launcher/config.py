@@ -35,7 +35,6 @@ CONFIG = {}
 LAUNCHER_CFG = {}
 REPO_CFG = {}
 PUBLISH_CFG = {}
-PORTS_CFG = {}
 LAUNCHER_HOST = "127.0.0.1"
 LAUNCHER_PORT = 8000
 LAUNCHER_TITLE = "WebLauncher"
@@ -53,7 +52,7 @@ def reload_config():
 
     用于 launcher 自更新覆盖 config.json 后，使后续 API 读取到新版本号。
     """
-    global CONFIG, LAUNCHER_CFG, REPO_CFG, PUBLISH_CFG, PORTS_CFG
+    global CONFIG, LAUNCHER_CFG, REPO_CFG, PUBLISH_CFG
     global LAUNCHER_HOST, LAUNCHER_PORT, LAUNCHER_TITLE, LAUNCHER_VERSION
     global LAUNCHER_CHANGELOG, LAUNCHER_RELEASED
     global REPO_URL, REPO_AUTH, VERIFY_SSL, SSL_CTX
@@ -62,7 +61,6 @@ def reload_config():
     LAUNCHER_CFG = CONFIG.get("launcher", {})
     REPO_CFG = CONFIG.get("repo", {})
     PUBLISH_CFG = CONFIG.get("publish", {})
-    PORTS_CFG = CONFIG.get("ports", {})
 
     LAUNCHER_HOST = LAUNCHER_CFG.get("host", "127.0.0.1")
     LAUNCHER_PORT = int(LAUNCHER_CFG.get("port", 8000))

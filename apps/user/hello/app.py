@@ -3,8 +3,9 @@
 - 验证：launcher 拉起进程 → iframe 嵌入 → 简单 JS 交互
 """
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import os
 
-PORT = 8110
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 
 HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

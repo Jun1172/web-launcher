@@ -3,8 +3,9 @@
 - 验证：localStorage 持久化（关闭重开仍在） + 列表的增删改
 """
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import os
 
-PORT = 8112
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 
 HTML = r"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

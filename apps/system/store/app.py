@@ -1,4 +1,4 @@
-import json
+import json, os
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -16,7 +16,7 @@ def load_config():
 CONFIG = load_config()
 LAUNCHER_HOST = CONFIG.get("launcher", {}).get("host", "127.0.0.1")
 LAUNCHER_PORT = CONFIG.get("launcher", {}).get("port", 8000)
-PORT = CONFIG.get("ports", {}).get("store", 8100)
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 LAUNCHER_URL = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}"
 
 # ── 旗舰级毛玻璃 UI 模板 ──

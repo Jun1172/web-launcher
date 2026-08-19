@@ -1,4 +1,4 @@
-import json, sys
+import json, os, sys
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -11,7 +11,7 @@ def load_config():
     return {}
 
 CONFIG = load_config()
-PORT = CONFIG.get("ports", {}).get("todo", 8101)
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 
 HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{font-family:system-ui;padding:32px;background:#f6f8ff;color:#222}

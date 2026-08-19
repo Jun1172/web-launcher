@@ -23,12 +23,5 @@
     "clock",
     "settings",
     "sysinfo"
-  ],
-  "ports": {
-    "store": 8100,
-    "todo": 8101,
-    "clock": 8102,
-    "sysinfo": 8103,
-    "settings": 8104
-  }
+  ]
 }

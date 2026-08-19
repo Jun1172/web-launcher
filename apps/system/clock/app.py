@@ -1,4 +1,4 @@
-import json, sys
+import json, os, sys
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -12,7 +12,7 @@ def load_config():
     return {}
 
 CONFIG = load_config()
-PORT = CONFIG.get("ports", {}).get("clock", 8102)
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 
 # ─ 极光毛玻璃风格 HTML ─
 HTML = r"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">

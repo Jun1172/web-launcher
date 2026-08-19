@@ -82,9 +82,30 @@ def load_user_apps():
 
 
 def rebuild_registry():
-    """基于 system_apps + user_apps 重建 REGISTRY。"""
+    """基于 system_apps + user_apps 重建 REGISTRY，并检测端口冲突。"""
     global REGISTRY
     REGISTRY = system_apps + user_apps
+    _mark_port_conflicts(REGISTRY)
+
+
+def _mark_port_conflicts(apps):
+    """扫描 apps 列表，给 port 重复的应用标记 port_conflict: True。
+
+    多个 app.json 写同一 port 时，全部标记为冲突，前端会显示 ⚠️ 角标。
+    """
+    port_map = {}
+    for a in apps:
+        p = a.get("port")
+        if p:
+            port_map.setdefault(p, []).append(a["id"])
+    conflict_ids = {aid for aids in port_map.values() if len(aids) > 1 for aid in aids}
+    for a in apps:
+        if a["id"] in conflict_ids:
+            a["port_conflict"] = True
+        elif "port_conflict" in a:
+            del a["port_conflict"]  # 清除上次标记，避免 reload 后残留
+    if conflict_ids:
+        print(f"⚠ 端口冲突: {conflict_ids}")
 
 
 def reload_apps():

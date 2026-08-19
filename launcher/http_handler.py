@@ -23,7 +23,7 @@ from . import config
 from . import app_registry
 from .config import vt
 from .app_registry import find_app
-from .process_manager import open_app as pm_open_app, procs
+from .process_manager import open_app as pm_open_app, get_port as pm_get_port, procs
 from .app_operations import (
     do_install, do_uninstall,
     get_launcher_version_info, do_launcher_update,
@@ -71,11 +71,13 @@ class Handler(BaseHTTPRequestHandler):
             ))
             return
 
-        # ── 应用列表（带运行状态）──
+        # ── 应用列表（带运行状态 + 实际端口）──
         if path == "/api/apps":
             self._json([
-                {**a, "running": (procs.get(a["id"]) is not None
-                                  and procs[a["id"]].poll() is None)}
+                {**a,
+                 "running": (procs.get(a["id"]) is not None
+                             and procs[a["id"]].poll() is None),
+                 "actual_port": pm_get_port(a["id"])}
                 for a in app_registry.REGISTRY
             ])
             return
@@ -151,17 +153,19 @@ class Handler(BaseHTTPRequestHandler):
             if not app:
                 self._json({"ok": False, "url": None})
                 return
-            ok = pm_open_app(app)
-            # 有 cmd 无 port 的后台进程：返回空 URL（前端不跳转 iframe，保持在桌面）
+            # launcher 分配端口 + 启动 + 等待就绪，返回 actual_port 或 None
+            port = pm_open_app(app)
             has_cmd = bool(app.get("cmd"))
-            has_port = app.get("port") is not None
             if not has_cmd:
-                url = f"/stub?id={app['id']}"
-            elif has_port:
-                url = f"http://127.0.0.1:{app['port']}"
+                # stub 应用（无进程，纯占位页）
+                self._json({"ok": True, "url": f"/stub?id={app['id']}", "reason": None})
+            elif port:
+                # 启动成功，用 actual_port 生成 iframe URL
+                self._json({"ok": True, "url": f"http://127.0.0.1:{port}", "reason": None})
             else:
-                url = None  # 后台进程，无页面可跳转
-            self._json({"ok": ok, "url": url if ok else None})
+                # 启动失败（进程崩溃或端口被占）
+                self._json({"ok": False, "url": None,
+                            "reason": "应用启动失败（进程崩溃或端口被占）"})
             return
 
         # ── 关闭应用（进程树）──

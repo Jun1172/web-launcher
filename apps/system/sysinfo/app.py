@@ -30,7 +30,7 @@ def load_config():
 
 
 CONFIG = load_config()
-PORT = CONFIG.get("ports", {}).get("sysinfo", 8103)
+PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
 LAUNCHER_HOST = CONFIG.get("launcher", {}).get("host", "127.0.0.1")
 LAUNCHER_PORT = CONFIG.get("launcher", {}).get("port", 8000)
 LAUNCHER_URL = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}"

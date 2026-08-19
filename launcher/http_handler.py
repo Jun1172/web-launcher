@@ -119,6 +119,17 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        # ── 用户布局配置（dock / hidden 覆盖层）──
+        if path == "/api/layout":
+            from . import layout
+            ly = layout.load_layout()
+            # dock=None 表示 layout.json 未保存过，前端用 app.json 默认值显示
+            self._json({
+                "dock": ly.get("dock"),
+                "hidden": ly.get("hidden", []),
+            })
+            return
+
         # ── 安装/升级到最新 ──
         if path == "/api/install":
             aid = q.get("id", [None])[0]
@@ -208,6 +219,22 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 config.save_repo_config(url, auth_user, auth_pass, verify_ssl)
                 self._json({"ok": True, "msg": "已保存，配置已实时刷新"})
+            except Exception as e:
+                self._json({"ok": False, "msg": f"保存失败: {e}"})
+            return
+
+        # ── 保存用户布局配置 ──
+        if path == "/api/layout":
+            from . import layout
+            dock = data.get("dock")
+            hidden = data.get("hidden")
+            if not isinstance(dock, list) or not isinstance(hidden, list):
+                self._json({"ok": False, "msg": "dock / hidden 必须为数组"})
+                return
+            try:
+                layout.save_layout(dock, hidden)
+                app_registry.reload_apps()  # 刷新内存注册表
+                self._json({"ok": True, "msg": "布局已保存"})
             except Exception as e:
                 self._json({"ok": False, "msg": f"保存失败: {e}"})
             return

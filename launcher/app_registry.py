@@ -88,10 +88,15 @@ def rebuild_registry():
 
 
 def reload_apps():
-    """重新扫描磁盘，刷新三个全局列表。启动时调用、安装/卸载后调用。"""
+    """重新扫描磁盘，刷新三个全局列表。启动时调用、安装/卸载后调用。
+
+    扫描完后调用 layout.apply_layout 覆盖 dock / 过滤 hidden
+    （layout.json 是用户级覆盖层，app.json 的 dock 是出厂默认）。
+    """
     global system_apps, user_apps
-    system_apps = load_system_apps()
-    user_apps = load_user_apps()
+    from . import layout  # 延迟导入避免循环
+    system_apps = layout.apply_layout(load_system_apps())
+    user_apps = layout.apply_layout(load_user_apps())
     rebuild_registry()
 
 

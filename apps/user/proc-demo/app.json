@@ -8,8 +8,15 @@
   "cmd": ["apps/user/proc-demo/app.py"],
   "dock": false,
   "system": false,
-  "ready_check": {"type": "process", "timeout": 2},
-  "restart_policy": {"on": "always", "max_retries": 5, "delay": 1},
+  "ready_check": {
+    "type": "process",
+    "timeout": 2
+  },
+  "restart_policy": {
+    "on": "always",
+    "max_retries": 5,
+    "delay": 1
+  },
   "stop_signal": "SIGTERM",
   "stop_timeout": 3
 }

@@ -54,11 +54,11 @@ body {
 }
 .sbR { display:flex; align-items:center; gap:12px; }
 
-#gearBtn {
+#gearBtn, #layoutBtn {
     background:transparent; border:1px solid transparent; color:var(--text-primary);
     cursor:pointer; font-size:14px; padding:4px 8px; border-radius:6px; transition:all 0.2s ease;
 }
-#gearBtn:hover { background:var(--glass-bg-hover); border-color:var(--glass-border-hover); }
+#gearBtn:hover, #layoutBtn:hover { background:var(--glass-bg-hover); border-color:var(--glass-border-hover); }
 #gearBtn.hasUpdate::after {
     content:""; display:inline-block; width:6px; height:6px; margin-left:2px;
     background:var(--danger); border-radius:50%; vertical-align:top;
@@ -305,6 +305,17 @@ body {
 .updHint.ok { background:rgba(52, 211, 153, 0.1); color:var(--success); border-color:rgba(52, 211, 153, 0.2); }
 .updHint.up { background:rgba(248, 113, 113, 0.1); color:var(--danger); border-color:rgba(248, 113, 113, 0.2); }
 
+/* ── 布局编辑列表 ── */
+.layList { display:flex; flex-direction:column; gap:8px; max-height:48vh; overflow:auto; padding-right:6px; }
+.layRow { display:flex; align-items:center; gap:14px; padding:10px 14px;
+    background: rgba(0,0,0,0.18); border:1px solid var(--glass-border); border-radius:12px; }
+.layRow .ic { font-size:22px; line-height:1; }
+.layRow .nm { flex:1; font-size:14px; font-weight:500; }
+.layRow .nm small { color:var(--accent); margin-left:6px; font-size:11px; font-weight:400; }
+.layRow .cb { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; }
+.layRow input[type=checkbox] { width:18px; height:18px; accent-color:var(--accent); cursor:pointer; margin:0; }
+.layRow .hideLbl input:checked + span { color:var(--danger); }
+
 /* ── Toast ── */
 .__toast {
     position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:9999;
@@ -324,6 +335,7 @@ body {
 <div id="statusbar">
   <span id="sbTime" style="font-variant-numeric: tabular-nums;">--:--</span>
   <span class="sbR">
+    <button id="layoutBtn" title="布局编辑">🗂️</button>
     <button id="gearBtn" title="关于 / 系统更新">⚙️</button>
     <svg id="netIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path class="arc" d="M2 8.5C5 5.9 8.4 4.5 12 4.5s7 1.4 10 4"/>
@@ -374,6 +386,22 @@ body {
     <div class="foot">
       <button class="btnDef" onclick="closeAbout()">关闭</button>
       <button class="btnPri" onclick="checkLauncherUpdate()">🔍 检查更新</button>
+    </div>
+  </div>
+</div>
+
+<!-- 布局编辑模态 -->
+<div id="layoutMask" class="modalMask">
+  <div class="modal" role="dialog" aria-label="布局编辑">
+    <h2>🗂️ 布局编辑</h2>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6">
+      勾选 <b style="color:var(--text-primary)">Dock</b> 的应用常驻底部；
+      勾选 <b style="color:var(--danger)">隐藏</b> 的从桌面移除。修改后保存即时生效。
+    </div>
+    <div id="layList" class="layList"></div>
+    <div class="foot">
+      <button class="btnDef" onclick="closeLayout()">取消</button>
+      <button class="btnPri" onclick="saveLayout()">💾 保存</button>
     </div>
   </div>
 </div>
@@ -601,13 +629,82 @@ document.addEventListener('click',e=>{
   const a=APPS.find(x=>x.id===ic.dataset.id);if(a)openApp(a);});
 $('homeBar').onclick=()=>{if(recentsOpen)closeRecents();else openRecents();};
 addEventListener('keydown',e=>{if(e.key==='Escape'){
-  if($('aboutMask').classList.contains('show'))closeAbout();else goHome();}});
+  if($('layoutMask').classList.contains('show'))closeLayout();
+  else if($('aboutMask').classList.contains('show'))closeAbout();
+  else goHome();}});
 
 /* ── 关于模态 ── */
 function openAbout(){$('aboutMask').classList.add('show');}
 function closeAbout(){$('aboutMask').classList.remove('show');}
 $('gearBtn').onclick=openAbout;
 $('aboutMask').addEventListener('click',e=>{if(e.target.id==='aboutMask')closeAbout();});
+
+/* ── 布局编辑模态 ── */
+function openLayout(){
+  $('layoutMask').classList.add('show');
+  renderLayoutList();
+}
+function closeLayout(){$('layoutMask').classList.remove('show');}
+$('layoutBtn').onclick=openLayout;
+$('layoutMask').addEventListener('click',e=>{if(e.target.id==='layoutMask')closeLayout();});
+
+async function renderLayoutList(){
+  const box=$('layList');
+  box.innerHTML='<div style="padding:14px;color:var(--text-secondary)">加载中…</div>';
+  let apps, ly;
+  try{
+    [apps, ly] = await Promise.all([
+      fetch('/api/apps').then(r=>r.json()),
+      fetch('/api/layout').then(r=>r.json())
+    ]);
+  }catch(e){ box.innerHTML='<div style="padding:14px;color:var(--danger)">加载失败：'+esc(e.message)+'</div>'; return; }
+
+  if(!apps.length){ box.innerHTML='<div style="padding:14px;color:var(--text-secondary)">暂无应用</div>'; return; }
+
+  // layout.json 未保存过时 ly.dock 为 null → 用 app.json 的 dock 默认值显示
+  // 一旦用户保存过（哪怕清空），ly.dock 是数组 → 按用户选择判定
+  const useLayoutDock = Array.isArray(ly.dock);
+  const dockSet = new Set(ly.dock || []);
+  const hiddenSet = new Set(ly.hidden || []);
+
+  box.innerHTML='';
+  apps.forEach(a=>{
+    const inDock = useLayoutDock ? dockSet.has(a.id) : !!a.dock;
+    const isHidden = hiddenSet.has(a.id);
+    const row=document.createElement('div'); row.className='layRow';
+    row.innerHTML=
+      '<span class="ic" style="color:'+(a.color||'#888')+'">'+(a.icon||'📦')+'</span>'+
+      '<span class="nm">'+esc(a.name)+(a.system?'<small>系统</small>':'')+'</span>'+
+      '<label class="cb"><input type="checkbox" data-id="'+a.id+'" data-field="dock" '+(inDock?'checked':'')+'> Dock</label>'+
+      '<label class="cb hideLbl"><input type="checkbox" data-id="'+a.id+'" data-field="hidden" '+(isHidden?'checked':'')+'> <span>隐藏</span></label>';
+    box.appendChild(row);
+  });
+}
+
+async function saveLayout(){
+  const dock=[], hidden=[];
+  document.querySelectorAll('#layList input[type=checkbox]').forEach(cb=>{
+    const id=cb.dataset.id, f=cb.dataset.field;
+    if(cb.checked){
+      if(f==='dock') dock.push(id);
+      if(f==='hidden') hidden.push(id);
+    }
+  });
+  try{
+    const r=await fetch('/api/layout',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({dock, hidden})
+    });
+    const j=await r.json();
+    if(j.ok){
+      showToast('布局已保存');
+      closeLayout();
+      await poll();
+      buildHome();
+    } else { alert('保存失败：'+j.msg); }
+  }catch(e){ alert('请求失败：'+e.message); }
+}
 async function checkLauncherUpdate(){
   const box=$('abUpd');box.style.display='block';box.className='updHint';
   box.textContent='正在检查更新…';

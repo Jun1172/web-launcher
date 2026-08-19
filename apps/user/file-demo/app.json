@@ -8,7 +8,11 @@
   "cmd": ["apps/user/file-demo/app.py"],
   "dock": false,
   "system": false,
-  "ready_check": {"type": "file", "file": "apps/user/file-demo/var/ready", "timeout": 5},
+  "ready_check": {
+    "type": "file",
+    "file": "apps/user/file-demo/var/ready",
+    "timeout": 5
+  },
   "stop_signal": "SIGTERM",
   "stop_timeout": 2
 }

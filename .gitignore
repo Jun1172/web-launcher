@@ -7,3 +7,4 @@ apps/user/file-demo/var
 *.zip
 *.spec
 dist
+layout.json

@@ -9,8 +9,15 @@
   "cmd": ["apps/user/cpp-hello/run.py"],
   "dock": false,
   "system": false,
-  "ready_check": {"type": "http", "timeout": 5},
-  "restart_policy": {"on": "failure", "max_retries": 3, "delay": 2},
+  "ready_check": {
+    "type": "http",
+    "timeout": 5
+  },
+  "restart_policy": {
+    "on": "failure",
+    "max_retries": 3,
+    "delay": 2
+  },
   "stop_timeout": 3,
   "requires": {
     "comment": "C++ 源码，需要本机先编译：Windows 跑 build.bat / Linux 跑 bash build.sh"

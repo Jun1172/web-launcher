@@ -8,7 +8,6 @@ do_launcher_update():         下载远端 launcher zip → 校验 → bak → �
 """
 import json
 import shutil
-import zipfile 
 from pathlib import Path
 from . import config
 from .config import (

@@ -482,22 +482,8 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/api/info":
-            # 👇 新增：动态读取最新配置，确保更新后无需重启也能显示新版本
-            current_config = load_config()
-            dynamic_static = {
-                "launcher_version": current_config.get("launcher", {}).get("version", "0.0.1"),
-                "launcher_released": current_config.get("launcher", {}).get("released", ""),
-                "launcher_changelog": current_config.get("launcher", {}).get("changelog", ""),
-                "python_version": sys.version.split()[0],
-                "os": f"{platform.system()} {platform.release()}",
-                "os_machine": platform.machine(),
-                "hostname": socket.gethostname(),
-                "cpu_count": os.cpu_count() or 1,
-                "processor": platform.processor() or "未知",
-            }
-            
             data = {
-                "static": dynamic_static,  # 👈 使用动态获取的数据
+                "static": STATIC_INFO,
                 "dynamic": collect_dynamic(),
                 "apps": scan_installed_apps(),
             }
@@ -507,10 +493,7 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            try:
-                self.wfile.write(b)
-            except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
-                pass  # 👈 优雅忽略客户端提前断开连接的报错
+            self.wfile.write(b)
             return
         if u.path == "/api/launcher-version":
             # 兼容保留：直接代理到 Launcher

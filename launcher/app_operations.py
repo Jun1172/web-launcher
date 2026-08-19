@@ -292,7 +292,10 @@ def do_launcher_update():
                         shutil.rmtree(target, ignore_errors=True)
                     shutil.copytree(app_sub, target)
                 except Exception as e:
-                    print(f"⚠ 更新应用 {app_sub.name} 失败: {e}")
+                    try:
+                        print(f"[WARN] 更新应用 {app_sub.name} 失败: {e}")
+                    except (UnicodeEncodeError, AttributeError):
+                        pass
 
     shutil.rmtree(tmp_root, ignore_errors=True)
     config.reload_config()

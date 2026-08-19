@@ -1,13 +1,13 @@
-"""system-monitor —— 系统监控 demo
+"""system-monitor —— 系统监控（专业版）
 - 端口 8130
-- 实时采集：CPU 使用率、内存使用率、网络流量
+- 实时采集：CPU/内存/磁盘/网络 详细信息
 - TOP 10 进程列表
-- 跨平台：Windows 用 ctypes/psutil(若装了)/wmic，Linux 读 /proc
-- 前端：Canvas 折线图 + setInterval 轮询 /api/stats
+- 参考 Windows 任务管理器设计
 """
 import json
 import os
 import platform
+import subprocess
 import sys
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -16,457 +16,806 @@ from urllib.parse import urlparse
 PORT = 8130
 IS_WIN = platform.system() == "Windows"
 
-# ── 优先用 psutil，没装就走原生方案 ──────────────────────────
+# ── 优先用 psutil ──────────────────────────────────────────────
 try:
     import psutil
     HAVE_PSUTIL = True
 except ImportError:
     HAVE_PSUTIL = False
 
-# ── CPU 采样 ───────────────────────────────────────────────
-_prev_cpu = None  # (idle_t, total_t)
-
-
-def _win_cpu_sample():
-    """Windows: GetSystemTimes 采样 CPU 空闲率，反推使用率"""
-    try:
-        import ctypes
-
-        class FILETIME(ctypes.Structure):
-            _fields_ = [("low", ctypes.c_uint), ("high", ctypes.c_uint)]
-
-        idle, kernel, user = FILETIME(), FILETIME(), FILETIME()
-        ctypes.windll.kernel32.GetSystemTimeAsFileTime(ctypes.byref(idle))
-        # GetSystemTimes：返回 idle/kernel/user 总时间
-        ctypes.windll.kernel32.GetSystemTimes(
-            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user))
-        idle_t = idle.high << 32 | idle.low
-        kernel_t = kernel.high << 32 | kernel.low
-        user_t = user.high << 32 | user.low
-        total_t = kernel_t + user_t
-        return idle_t, total_t
-    except Exception:
-        return None, None
-
-
-def sample_cpu():
-    """返回当前 CPU 使用率（0~100）"""
-    global _prev_cpu
+# ── CPU 信息 ───────────────────────────────────────────────
+def get_cpu_info():
+    """获取CPU详细信息"""
+    info = {
+        "name": platform.processor() or "Unknown",
+        "cores": os.cpu_count() or 1,
+        "logical_cores": psutil.cpu_count(logical=True) if HAVE_PSUTIL else os.cpu_count(),
+        "usage": 0.0,
+        "freq_current": 0.0,
+        "freq_base": 0.0,
+        "processes": 0,
+        "threads": 0,
+        "context_switches": 0,
+        "uptime": 0,
+    }
+    
     if HAVE_PSUTIL:
-        return psutil.cpu_percent(interval=None)
-    if IS_WIN:
-        idle_t, total_t = _win_cpu_sample()
-        if idle_t is None or _prev_cpu is None or _prev_cpu[1] == total_t:
-            _prev_cpu = (idle_t, total_t)
-            return 0.0
-        idle_delta = idle_t - _prev_cpu[0]
-        total_delta = total_t - _prev_cpu[1]
-        _prev_cpu = (idle_t, total_t)
-        if total_delta <= 0:
-            return 0.0
-        return max(0.0, min(100.0, (1 - idle_delta / total_delta) * 100))
-    # Linux: /proc/stat 第一行是总 CPU
-    try:
-        with open("/proc/stat") as f:
-            line = f.readline()
-        parts = line.split()[1:]
-        vals = [int(x) for x in parts[:4]]  # user,nice,system,idle
-        idle_t = vals[3]
-        total_t = sum(vals)
-        if _prev_cpu is None or _prev_cpu[1] == total_t:
-            _prev_cpu = (idle_t, total_t)
-            return 0.0
-        idle_delta = idle_t - _prev_cpu[0]
-        total_delta = total_t - _prev_cpu[1]
-        _prev_cpu = (idle_t, total_t)
-        if total_delta <= 0:
-            return 0.0
-        return max(0.0, min(100.0, (1 - idle_delta / total_delta) * 100))
-    except Exception:
-        return 0.0
-
-
-# ── 内存 ───────────────────────────────────────────────────
-def sample_mem():
-    """返回 (used_pct, total_bytes, used_bytes)"""
-    if HAVE_PSUTIL:
-        m = psutil.virtual_memory()
-        return m.percent, m.total, m.used
-    if IS_WIN:
+        # CPU频率
+        freq = psutil.cpu_freq()
+        if freq:
+            info["freq_current"] = round(freq.current, 2)
+            info["freq_base"] = round(freq.max, 2)
+        
+        # CPU使用率
+        info["usage"] = psutil.cpu_percent(interval=None)
+        
+        # 进程和线程数
+        info["processes"] = len(psutil.pids())
+        
+        # 系统启动时间
+        try:
+            boot = psutil.boot_time()
+            info["uptime"] = int(time.time() - boot)
+        except:
+            pass
+        
+        # 上下文切换
+        try:
+            ctx = psutil.cpu_stats()
+            info["context_switches"] = ctx.ctx_switches
+        except:
+            pass
+    elif IS_WIN:
+        # Windows 原生方式
         try:
             import ctypes
+            # 获取CPU使用率
+            info["usage"] = _win_cpu_usage()
+            
+            # 获取进程数
+            info["processes"] = subprocess.check_output(
+                "wmic process get ProcessId | find /c \"\"", 
+                shell=True, text=True, encoding='gbk'
+            ).strip()
+            info["processes"] = int(info["processes"]) if info["processes"].isdigit() else 0
+        except:
+            pass
+    else:
+        # Linux
+        try:
+            with open("/proc/stat") as f:
+                line = f.readline()
+            parts = line.split()[1:]
+            vals = [int(x) for x in parts[:4]]
+            idle = vals[3]
+            total = sum(vals)
+            if hasattr(get_cpu_info, '_prev'):
+                idle_delta = idle - get_cpu_info._prev_idle
+                total_delta = total - get_cpu_info._prev_total
+                if total_delta > 0:
+                    info["usage"] = round((1 - idle_delta / total_delta) * 100, 1)
+            get_cpu_info._prev_idle = idle
+            get_cpu_info._prev_total = total
+            
+            # 进程数
+            info["processes"] = len(os.listdir("/proc")) // 2  # 近似值
+        except:
+            pass
+    
+    return info
 
+def _win_cpu_usage():
+    """Windows CPU使用率"""
+    try:
+        import ctypes
+        class FILETIME(ctypes.Structure):
+            _fields_ = [("low", ctypes.c_uint), ("high", ctypes.c_uint)]
+        
+        idle, kernel, user = FILETIME(), FILETIME(), FILETIME()
+        ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user))
+        
+        idle_t = (idle.high << 32) | idle.low
+        total_t = ((kernel.high << 32) | kernel.low) + ((user.high << 32) | user.low)
+        
+        if hasattr(_win_cpu_usage, '_prev'):
+            idle_delta = idle_t - _win_cpu_usage._prev_idle
+            total_delta = total_t - _win_cpu_usage._prev_total
+            if total_delta > 0:
+                return round((1 - idle_delta / total_delta) * 100, 1)
+        
+        _win_cpu_usage._prev_idle = idle_t
+        _win_cpu_usage._prev_total = total_t
+        return 0.0
+    except:
+        return 0.0
+
+# ── 内存信息 ───────────────────────────────────────────────
+def get_memory_info():
+    """获取内存详细信息"""
+    info = {
+        "total": 0,
+        "available": 0,
+        "used": 0,
+        "percent": 0.0,
+        "committed_total": 0,
+        "committed_used": 0,
+        "cached": 0,
+        "buffers": 0,
+        "page_file_total": 0,
+        "page_file_used": 0,
+    }
+    
+    if HAVE_PSUTIL:
+        mem = psutil.virtual_memory()
+        info["total"] = mem.total
+        info["available"] = mem.available
+        info["used"] = mem.used
+        info["percent"] = mem.percent
+        
+        # 提交内存
+        try:
+            committed = psutil.virtual_memory()  # Windows特有
+            info["committed_total"] = getattr(committed, 'total', 0)
+        except:
+            pass
+        
+        # 缓存和缓冲区
+        info["cached"] = getattr(mem, 'cached', 0)
+        info["buffers"] = getattr(mem, 'buffers', 0)
+        
+        # 交换分区
+        try:
+            swap = psutil.swap_memory()
+            info["page_file_total"] = swap.total
+            info["page_file_used"] = swap.used
+        except:
+            pass
+    elif IS_WIN:
+        try:
+            import ctypes
             class MEMORYSTATUSEX(ctypes.Structure):
                 _fields_ = [
-                    ("dwLength", ctypes.c_uint),
-                    ("dwMemoryLoad", ctypes.c_uint),
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
                     ("ullTotalPhys", ctypes.c_ulonglong),
                     ("ullAvailPhys", ctypes.c_ulonglong),
                     ("ullTotalPageFile", ctypes.c_ulonglong),
                     ("ullAvailPageFile", ctypes.c_ulonglong),
-                    ("ullTotalVirtual", ctypes.c_ulonglong),
-                    ("ullAvailVirtual", ctypes.c_ulonglong),
-                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
                 ]
+            
             stat = MEMORYSTATUSEX()
             stat.dwLength = ctypes.sizeof(stat)
             ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
-            total = stat.ullTotalPhys
-            used = total - stat.ullAvailPhys
-            return stat.dwMemoryLoad, total, used
-        except Exception:
-            return 0.0, 0, 0
-    # Linux: /proc/meminfo
-    try:
-        info = {}
-        with open("/proc/meminfo") as f:
-            for line in f:
-                k, v = line.split(":", 1)
-                info[k] = int(v.strip().split()[0]) * 1024
-        total = info.get("MemTotal", 0)
-        avail = info.get("MemAvailable", info.get("MemFree", 0))
-        used = total - avail
-        return (used / total * 100 if total else 0.0), total, used
-    except Exception:
-        return 0.0, 0, 0
-
-
-# ── 网络 ───────────────────────────────────────────────────
-_prev_net = (0, 0, 0)  # (ts, bytes_in, bytes_out)
-
-
-def sample_net():
-    """返回 (in_rate_bytes_per_sec, out_rate_bytes_per_sec)"""
-    global _prev_net
-    if HAVE_PSUTIL:
-        cur = psutil.net_io_counters()
-        bytes_in, bytes_out = cur.bytes_recv, cur.bytes_sent
-    elif IS_WIN:
-        try:
-            import ctypes
-
-            class MIB_IFROW(ctypes.Structure):
-                _fields_ = [
-                    ("wszName", ctypes.c_wchar * 256),
-                    ("dwIndex", ctypes.c_uint),
-                    ("dwType", ctypes.c_uint),
-                    ("dwMtu", ctypes.c_uint),
-                    ("dwSpeed", ctypes.c_uint),
-                    ("dwPhysAddrLen", ctypes.c_uint),
-                    ("bPhysAddr", ctypes.c_ubyte * 8),
-                    ("dwAdminStatus", ctypes.c_uint),
-                    ("dwOperStatus", ctypes.c_uint),
-                    ("dwLastChange", ctypes.c_uint),
-                    ("dwInOctets", ctypes.c_uint),
-                    ("dwInUcastPkts", ctypes.c_uint),
-                    ("dwInNUcastPkts", ctypes.c_uint),
-                    ("dwInDiscards", ctypes.c_uint),
-                    ("dwInErrors", ctypes.c_uint),
-                    ("dwInUnknownProtos", ctypes.c_uint),
-                    ("dwOutOctets", ctypes.c_uint),
-                    ("dwOutUcastPkts", ctypes.c_uint),
-                    ("dwOutNUcastPkts", ctypes.c_uint),
-                    ("dwOutDiscards", ctypes.c_uint),
-                    ("dwOutErrors", ctypes.c_uint),
-                    ("dwOutQLen", ctypes.c_uint),
-                    ("dwDescrLen", ctypes.c_uint),
-                    ("bDescr", ctypes.c_ubyte * 256),
-                ]
-            size = ctypes.c_uint(0)
-            ctypes.windll.iphlpapi.GetIfTable(None, ctypes.byref(size), False)
-            buf = (ctypes.c_ubyte * size.value)()
-            n_entries = ctypes.c_uint(0)
-            ctypes.windll.iphlpapi.GetIfTable(buf, ctypes.byref(n_entries), False)
-            bytes_in = bytes_out = 0
-            row_size = ctypes.sizeof(MIB_IFROW)
-            for i in range(n_entries.value):
-                row = MIB_IFROW.from_buffer(buf, i * row_size)
-                # 跳过 loopback（type=24）和 down 的接口
-                if row.dwOperStatus != 1 or row.dwType == 24:
-                    continue
-                bytes_in += row.dwInOctets
-                bytes_out += row.dwOutOctets
-        except Exception:
-            bytes_in, bytes_out = 0, 0
+            
+            info["total"] = stat.ullTotalPhys
+            info["available"] = stat.ullAvailPhys
+            info["used"] = stat.ullTotalPhys - stat.ullAvailPhys
+            info["percent"] = stat.dwMemoryLoad
+            info["page_file_total"] = stat.ullTotalPageFile
+            info["page_file_used"] = stat.ullTotalPageFile - stat.ullAvailPageFile
+        except:
+            pass
     else:
         try:
-            with open("/proc/net/dev") as f:
-                next(f)  # 跳过两行表头
-                bytes_in = bytes_out = 0
+            with open("/proc/meminfo") as f:
                 for line in f:
                     parts = line.split(":")
-                    if len(parts) != 2:
-                        continue
-                    name = parts[0].strip()
-                    if name in ("lo",):
-                        continue
-                    data = parts[1].split()
-                    bytes_in += int(data[0])
-                    bytes_out += int(data[8])
-        except Exception:
-            bytes_in, bytes_out = 0, 0
-    now = time.time()
-    if _prev_net[0] == 0:
-        _prev_net = (now, bytes_in, bytes_out)
-        return 0.0, 0.0
-    dt = now - _prev_net[0]
-    if dt <= 0:
-        return 0.0, 0.0
-    in_rate = (bytes_in - _prev_net[1]) / dt
-    out_rate = (bytes_out - _prev_net[2]) / dt
-    _prev_net = (now, bytes_in, bytes_out)
-    return max(0.0, in_rate), max(0.0, out_rate)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        val = int(parts[1].strip().split()[0]) * 1024
+                        if key == "MemTotal":
+                            info["total"] = val
+                        elif key == "MemAvailable":
+                            info["available"] = val
+                        elif key == "Buffers":
+                            info["buffers"] = val
+                        elif key == "Cached":
+                            info["cached"] = val
+            
+            info["used"] = info["total"] - info["available"]
+            info["percent"] = round((info["used"] / info["total"]) * 100, 1) if info["total"] else 0
+        except:
+            pass
+    
+    return info
 
-
-# ── TOP 进程 ───────────────────────────────────────────────
-def top_procs(limit=10):
-    """返回 [{pid, name, cpu, mem}] 列表"""
+# ── 磁盘信息 ───────────────────────────────────────────────
+def get_disk_info():
+    """获取磁盘详细信息"""
+    disks = []
+    
     if HAVE_PSUTIL:
-        procs = []
-        for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
+        for part in psutil.disk_partitions():
             try:
+                usage = psutil.disk_usage(part.mountpoint)
+                disk_info = {
+                    "device": part.device,
+                    "mountpoint": part.mountpoint,
+                    "fstype": part.fstype,
+                    "total": usage.total,
+                    "used": usage.used,
+                    "free": usage.free,
+                    "percent": usage.percent,
+                    "read_bytes": 0,
+                    "write_bytes": 0,
+                    "read_speed": 0,
+                    "write_speed": 0,
+                }
+                
+                # IO统计
+                try:
+                    io = psutil.disk_io_counters(perdisk=True)
+                    if part.device in io:
+                        disk_io = io[part.device]
+                        disk_info["read_bytes"] = disk_io.read_bytes
+                        disk_info["write_bytes"] = disk_io.write_bytes
+                        
+                        # 计算速度（需要保存上次值）
+                        if not hasattr(get_disk_info, '_prev_disk_io'):
+                            get_disk_info._prev_disk_io = {}
+                        
+                        if part.device in get_disk_info._prev_disk_io:
+                            prev = get_disk_info._prev_disk_io[part.device]
+                            dt = time.time() - getattr(get_disk_info, '_last_disk_time', time.time())
+                            if dt > 0:
+                                disk_info["read_speed"] = max(0, (disk_io.read_bytes - prev["read_bytes"]) / dt)
+                                disk_info["write_speed"] = max(0, (disk_io.write_bytes - prev["write_bytes"]) / dt)
+                        
+                        get_disk_info._prev_disk_io[part.device] = {
+                            "read_bytes": disk_io.read_bytes,
+                            "write_bytes": disk_io.write_bytes,
+                        }
+                        get_disk_info._last_disk_time = time.time()
+                except:
+                    pass
+                
+                disks.append(disk_info)
+            except:
+                continue
+    elif IS_WIN:
+        try:
+            import string
+            drives = []
+            bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+            for letter in string.ascii_uppercase:
+                if bitmask & 1:
+                    drives.append(f"{letter}:\\")
+                bitmask >>= 1
+            
+            for drive in drives:
+                try:
+                    free_bytes = ctypes.c_ulonglong(0)
+                    total_bytes = ctypes.c_ulonglong(0)
+                    ctypes.windll.kernel32.GetDiskFreeSpaceExW(
+                        drive, ctypes.byref(ctypes.c_ulonglong(0)),
+                        ctypes.byref(total_bytes), ctypes.byref(free_bytes)
+                    )
+                    
+                    disks.append({
+                        "device": drive,
+                        "mountpoint": drive,
+                        "total": total_bytes.value,
+                        "used": total_bytes.value - free_bytes.value,
+                        "free": free_bytes.value,
+                        "percent": round(((total_bytes.value - free_bytes.value) / total_bytes.value) * 100, 1) if total_bytes.value else 0,
+                    })
+                except:
+                    continue
+        except:
+            pass
+    else:
+        # Linux
+        try:
+            with open("/proc/mounts") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 3 and parts[2] not in ["proc", "sysfs", "devtmpfs"]:
+                        try:
+                            usage = shutil.disk_usage(parts[1])
+                            disks.append({
+                                "device": parts[0],
+                                "mountpoint": parts[1],
+                                "fstype": parts[2],
+                                "total": usage.total,
+                                "used": usage.used,
+                                "free": usage.free,
+                                "percent": round((usage.used / usage.total) * 100, 1) if usage.total else 0,
+                            })
+                        except:
+                            continue
+        except:
+            pass
+    
+    return disks
+
+# ── 网络信息 ───────────────────────────────────────────────
+def get_network_info():
+    """获取网络详细信息"""
+    interfaces = []
+    
+    if HAVE_PSUTIL:
+        io = psutil.net_io_counters(pernic=True)
+        addrs = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
+        
+        for nic, io_stats in io.items():
+            nic_info = {
+                "name": nic,
+                "bytes_sent": io_stats.bytes_sent,
+                "bytes_recv": io_stats.bytes_recv,
+                "packets_sent": io_stats.packets_sent,
+                "packets_recv": io_stats.packets_recv,
+                "errin": io_stats.errin,
+                "errout": io_stats.errout,
+                "speed": 0,
+                "is_up": False,
+                "addresses": [],
+            }
+            
+            # 获取IP地址
+            if nic in addrs:
+                for addr in addrs[nic]:
+                    if addr.family == psutil.AF_LINK:
+                        nic_info["mac"] = addr.address
+                    elif addr.family == 2:  # AF_INET
+                        nic_info["addresses"].append({
+                            "type": "IPv4",
+                            "address": addr.address,
+                            "netmask": addr.netmask,
+                        })
+                    elif addr.family == 23:  # AF_INET6
+                        nic_info["addresses"].append({
+                            "type": "IPv6",
+                            "address": addr.address,
+                        })
+            
+            # 获取状态和速度
+            if nic in stats:
+                nic_info["is_up"] = stats[nic].isup
+                nic_info["speed"] = stats[nic].speed if stats[nic].speed else 0
+            
+            # 计算速度
+            if not hasattr(get_network_info, '_prev_net'):
+                get_network_info._prev_net = {}
+            
+            if nic in get_network_info._prev_net:
+                prev = get_network_info._prev_net[nic]
+                dt = time.time() - getattr(get_network_info, '_last_net_time', time.time())
+                if dt > 0:
+                    nic_info["send_speed"] = max(0, (io_stats.bytes_sent - prev["bytes_sent"]) / dt)
+                    nic_info["recv_speed"] = max(0, (io_stats.bytes_recv - prev["bytes_recv"]) / dt)
+            else:
+                nic_info["send_speed"] = 0
+                nic_info["recv_speed"] = 0
+            
+            get_network_info._prev_net[nic] = {
+                "bytes_sent": io_stats.bytes_sent,
+                "bytes_recv": io_stats.bytes_recv,
+            }
+            get_network_info._last_net_time = time.time()
+            
+            interfaces.append(nic_info)
+    elif IS_WIN:
+        # Windows 简化版
+        try:
+            out = subprocess.check_output(
+                "wmic nic where PhysicalAdapter=True get Name,Speed | more",
+                shell=True, text=True, encoding='gbk', errors='ignore'
+            )
+            # 解析输出...
+        except:
+            pass
+    else:
+        # Linux
+        try:
+            with open("/proc/net/dev") as f:
+                for line in f:
+                    if ":" in line:
+                        parts = line.split(":")
+                        nic = parts[0].strip()
+                        if nic not in ["lo"]:
+                            stats = parts[1].split()
+                            interfaces.append({
+                                "name": nic,
+                                "bytes_recv": int(stats[0]),
+                                "packets_recv": int(stats[1]),
+                                "bytes_sent": int(stats[8]),
+                                "packets_sent": int(stats[9]),
+                            })
+        except:
+            pass
+    
+    return interfaces
+
+# ── 进程信息 ───────────────────────────────────────────────
+def get_top_processes(limit=10):
+    """获取TOP进程"""
+    procs = []
+    
+    if HAVE_PSUTIL:
+        for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent", "memory_info"]):
+            try:
+                mem = p.info["memory_info"]
                 procs.append({
                     "pid": p.info["pid"],
-                    "name": p.info["name"],
+                    "name": p.info["name"] or "Unknown",
                     "cpu": p.info["cpu_percent"] or 0.0,
-                    "mem": p.info["memory_percent"] or 0.0,
+                    "memory_percent": p.info["memory_percent"] or 0.0,
+                    "memory_bytes": mem.rss if mem else 0,
+                    "threads": p.num_threads() if hasattr(p, 'num_threads') else 0,
                 })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+        
         procs.sort(key=lambda x: x["cpu"], reverse=True)
         return procs[:limit]
-    if IS_WIN:
-        # 用 wmic 命令，按 WorkingSet 排序
-        import subprocess
+    elif IS_WIN:
         try:
             out = subprocess.check_output(
-                ["wmic", "process", "get",
-                 "ProcessId,Name,WorkingSetSize",
-                 "/format:csv"],
-                text=True, stderr=subprocess.DEVNULL, timeout=2)
+                "wmic process get ProcessId,Name,WorkingSetSize /format:csv",
+                text=True, shell=True, encoding='gbk', errors='ignore'
+            )
             rows = [r for r in out.splitlines() if r.strip() and "," in r][1:]
-            procs = []
-            for r in rows:
+            for r in rows[:limit]:
                 parts = r.split(",")
-                if len(parts) < 3:
-                    continue
-                try:
-                    node, name, ws, pid = parts
-                    procs.append({
-                        "pid": int(pid),
-                        "name": name,
-                        "cpu": 0.0,  # wmic 不直接给 cpu，留 0
-                        "mem": float(ws),
-                    })
-                except (ValueError, IndexError):
-                    continue
-            procs.sort(key=lambda x: x["mem"], reverse=True)
-            return procs[:limit]
-        except Exception:
-            return []
-    # Linux: ps 命令
-    try:
-        import subprocess
-        out = subprocess.check_output(
-            ["ps", "-eo", "pid,comm,%cpu,%mem", "--sort=-pcpu"],
-            text=True, stderr=subprocess.DEVNULL, timeout=2)
-        rows = out.splitlines()[1:]
-        procs = []
-        for r in rows[:limit]:
-            parts = r.split(None, 3)
-            if len(parts) < 4:
-                continue
-            try:
-                procs.append({
-                    "pid": int(parts[0]),
-                    "name": parts[1],
-                    "cpu": float(parts[2]),
-                    "mem": float(parts[3]),
-                })
-            except ValueError:
-                continue
-        return procs
-    except Exception:
-        return []
+                if len(parts) >= 4:
+                    try:
+                        procs.append({
+                            "pid": int(parts[3]),
+                            "name": parts[1],
+                            "cpu": 0.0,
+                            "memory_percent": 0.0,
+                            "memory_bytes": int(parts[2]),
+                        })
+                    except:
+                        continue
+        except:
+            pass
+    
+    return procs
 
-
-# ── 启动后台 CPU 采样（让第一次拿数据也是有效差值）─────────
-if not HAVE_PSUTIL:
-    sample_cpu()
-    sample_net()
-
-
-# ── HTTP 服务 ─────────────────────────────────────────────
+# ── HTTP Handler ───────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a, **k):
         pass
 
-    def _json(self, obj, code=200):
-        body = json.dumps(obj).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _html(self):
+    def _json(self, obj):
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(HTML.encode("utf-8"))
+        self.wfile.write(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
 
     def do_GET(self):
-        u = urlparse(self.path)
-        if u.path == "/":
-            self._html()
-        elif u.path == "/api/stats":
-            cpu = sample_cpu()
-            mem_pct, mem_total, mem_used = sample_mem()
-            in_rate, out_rate = sample_net()
-            self._json({
-                "ts": int(time.time()),
-                "cpu": round(cpu, 1),
-                "mem_pct": round(mem_pct, 1),
-                "mem_total": mem_total,
-                "mem_used": mem_used,
-                "net_in": int(in_rate),
-                "net_out": int(out_rate),
+        path = urlparse(self.path).path
+        
+        if path == "/":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(HTML.encode("utf-8"))
+        elif path == "/api/system":
+            data = {
+                "cpu": get_cpu_info(),
+                "memory": get_memory_info(),
+                "disks": get_disk_info(),
+                "network": get_network_info(),
+                "timestamp": int(time.time()),
                 "has_psutil": HAVE_PSUTIL,
-            })
-        elif u.path == "/api/top":
-            self._json({"procs": top_procs(10)})
+            }
+            self._json(data)
+        elif path == "/api/processes":
+            self._json({"processes": get_top_processes(10)})
         else:
             self.send_response(404)
             self.end_headers()
 
-
+# ── HTML 前端 ─────────────────────────────────────────────
 HTML = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>📈 系统监控</title>
+<title>📊 系统监控专业版</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
-body{background:linear-gradient(160deg,#0e1229 0%,#1c2347 100%);color:#fff;min-height:100vh;padding:14px;font-size:14px}
-.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding:0 4px}
-.header h1{font-size:18px;font-weight:600}
-.header .meta{font-size:12px;opacity:.6}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
-.kpi{background:rgba(255,255,255,.07);border-radius:14px;padding:12px}
-.kpi .label{font-size:11px;opacity:.6;margin-bottom:6px}
-.kpi .val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
-.kpi .sub{font-size:11px;opacity:.5;margin-top:2px}
-.kpi.cpu .val{color:#5b8cff}
-.kpi.mem .val{color:#2ecc71}
-.kpi.net .val{color:#f39c12}
-.card{background:rgba(255,255,255,.06);border-radius:14px;padding:12px;margin-bottom:12px}
-.card h2{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between}
-.card h2 .legend{display:flex;gap:10px;font-size:11px;font-weight:400;opacity:.7}
-.card h2 .legend span{display:flex;align-items:center;gap:4px}
-.card h2 .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
-canvas{width:100%;height:120px;display:block}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{text-align:left;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06)}
-th{opacity:.5;font-weight:500;font-size:11px}
-td.num{font-variant-numeric:tabular-nums;text-align:right}
-.tag{display:inline-block;padding:1px 6px;border-radius:6px;font-size:10px;background:rgba(91,140,255,.2);color:#5b8cff}
-.warn{color:#e74c3c}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    background:#f0f2f5;color:#1a1a1a;
+    min-height:100vh;padding:20px;
+}
+.container{max-width:1400px;margin:0 auto}
+h1{font-size:24px;margin-bottom:20px;color:#1a1a1a}
+
+.tabs{display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid #e0e0e0}
+.tab{
+    padding:10px 20px;background:none;border:none;
+    cursor:pointer;font-size:14px;font-weight:500;
+    color:#666;border-bottom:2px solid transparent;margin-bottom:-2px;
+    transition:all 0.2s;
+}
+.tab:hover{color:#0078d4}
+.tab.active{color:#0078d4;border-bottom-color:#0078d4}
+
+.content{display:none}
+.content.active{display:block}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+
+.card{
+    background:#fff;border-radius:8px;padding:20px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.08);
+}
+.card h2{font-size:16px;margin-bottom:16px;color:#1a1a1a;border-bottom:1px solid #e0e0e0;padding-bottom:8px}
+
+.metric{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.metric:last-child{border-bottom:none}
+.metric-label{color:#666;font-size:13px}
+.metric-value{font-weight:600;font-family:Consolas,monospace;font-size:13px}
+.metric-value.highlight{color:#0078d4}
+.metric-value.warning{color:#d83b01}
+
+.progress{
+    height:8px;background:#e0e0e0;border-radius:4px;
+    overflow:hidden;margin-top:8px;
+}
+.progress-bar{
+    height:100%;background:#0078d4;transition:width 0.3s;
+}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px;color:#666;font-weight:500;border-bottom:2px solid #e0e0e0}
+td{padding:10px;border-bottom:1px solid #f0f0f0;font-family:Consolas,monospace}
+tr:hover{background:#f8f9fa}
+
+.chart{height:200px;background:#f8f9fa;border-radius:4px;margin-top:16px;position:relative}
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>📈 系统监控</h1>
-  <div class="meta" id="meta">采集中…</div>
+<div class="container">
+    <h1> 系统监控专业版</h1>
+    
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('overview')">概览</button>
+        <button class="tab" onclick="switchTab('cpu')">CPU</button>
+        <button class="tab" onclick="switchTab('memory')">内存</button>
+        <button class="tab" onclick="switchTab('disk')">磁盘</button>
+        <button class="tab" onclick="switchTab('network')">网络</button>
+        <button class="tab" onclick="switchTab('processes')">进程</button>
+    </div>
+    
+    <div id="overview" class="content active"></div>
+    <div id="cpu" class="content"></div>
+    <div id="memory" class="content"></div>
+    <div id="disk" class="content"></div>
+    <div id="network" class="content"></div>
+    <div id="processes" class="content"></div>
 </div>
-<div class="kpis">
-  <div class="kpi cpu"><div class="label">CPU</div><div class="val" id="kCpu">—</div><div class="sub" id="kCpuSub">使用率</div></div>
-  <div class="kpi mem"><div class="label">内存</div><div class="val" id="kMem">—</div><div class="sub" id="kMemSub">使用率</div></div>
-  <div class="kpi net"><div class="label">网络 ↓↑</div><div class="val" id="kNet">—</div><div class="sub" id="kNetSub">KB/s</div></div>
-</div>
-<div class="card">
-  <h2>CPU / 内存 趋势 <span class="legend">
-    <span><i style="background:#5b8cff"></i>CPU%</span>
-    <span><i style="background:#2ecc71"></i>MEM%</span>
-  </span></h2>
-  <canvas id="chart"></canvas>
-</div>
-<div class="card">
-  <h2>TOP 进程 <span class="legend"><span id="topMeta"></span></span></h2>
-  <table>
-    <thead><tr><th>PID</th><th>名称</th><th class="num">CPU%</th><th class="num">内存</th></tr></thead>
-    <tbody id="topBody"></tbody>
-  </table>
-</div>
-<script>
-const $=id=>document.getElementById(id);
-const fmtB=b=>{if(!b)return '0 B';const u=['B','KB','MB','GB','TB'];const i=Math.floor(Math.log(b)/Math.log(1024));return (b/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i];};
-const fmtR=b=>{const k=b/1024;return k>1024?(k/1024).toFixed(1)+' MB/s':k.toFixed(1)+' KB/s';};
 
-// 折线图
-const cv=$('chart'),ctx=cv.getContext('2d');
-const W=600,H=120,N=60;
-const cpuHist=[],memHist=[];
-function resize(){const r=cv.getBoundingClientRect();cv.width=r.width*devicePixelRatio;cv.height=H*devicePixelRatio;ctx.scale(devicePixelRatio,devicePixelRatio);}
-addEventListener('resize',resize);resize();
-function draw(){
-  const w=cv.width/devicePixelRatio;
-  ctx.clearRect(0,0,w,H);
-  // 网格
-  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;
-  for(let i=0;i<=4;i++){const y=i*H/4;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-  // 数据线
-  function line(arr,color){
-    if(arr.length<2)return;
-    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
-    arr.forEach((v,i)=>{
-      const x=i*w/(N-1);
-      const y=H-(v/100)*H;
-      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+<script>
+let sysData = {};
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(tab).classList.add('active');
+    render(tab);
+}
+
+function fmtBytes(b) {
+    if (!b) return '0 B';
+    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(b) / Math.log(1024));
+    return (b / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
+}
+
+function fmtTime(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
+
+async function fetchSystem() {
+    try {
+        const r = await fetch('/api/system');
+        sysData = await r.json();
+        render(document.querySelector('.tab.active').textContent.toLowerCase());
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function fetchProcesses() {
+    try {
+        const r = await fetch('/api/processes');
+        const d = await r.json();
+        renderProcesses(d.processes);
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function render(tab) {
+    if (tab === 'overview') renderOverview();
+    else if (tab === 'cpu') renderCPU();
+    else if (tab === 'memory') renderMemory();
+    else if (tab === 'disk') renderDisk();
+    else if (tab === 'network') renderNetwork();
+}
+
+function renderOverview() {
+    const d = sysData;
+    document.getElementById('overview').innerHTML = `
+        <div class="grid">
+            <div class="card">
+                <h2>⚡ CPU</h2>
+                <div class="metric">
+                    <span class="metric-label">使用率</span>
+                    <span class="metric-value ${(d.cpu?.usage||0) > 80 ? 'warning' : 'highlight'}">${(d.cpu?.usage||0).toFixed(1)}%</span>
+                </div>
+                <div class="progress"><div class="progress-bar" style="width:${d.cpu?.usage||0}%"></div></div>
+                <div class="metric" style="margin-top:12px">
+                    <span class="metric-label">速度</span>
+                    <span class="metric-value">${(d.cpu?.freq_current||0).toFixed(2)} GHz</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">核心数</span>
+                    <span class="metric-value">${d.cpu?.cores||0} 核 / ${d.cpu?.logical_cores||0} 线程</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>💾 内存</h2>
+                <div class="metric">
+                    <span class="metric-label">使用率</span>
+                    <span class="metric-value ${(d.memory?.percent||0) > 80 ? 'warning' : 'highlight'}">${(d.memory?.percent||0).toFixed(1)}%</span>
+                </div>
+                <div class="progress"><div class="progress-bar" style="width:${d.memory?.percent||0}%"></div></div>
+                <div class="metric" style="margin-top:12px">
+                    <span class="metric-label">已用 / 总计</span>
+                    <span class="metric-value">${fmtBytes(d.memory?.used||0)} / ${fmtBytes(d.memory?.total||0)}</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>💿 磁盘</h2>
+                ${(d.disks||[]).slice(0,2).map(disk => `
+                    <div class="metric">
+                        <span class="metric-label">${disk.mountpoint}</span>
+                        <span class="metric-value">${disk.percent?.toFixed(1)||0}%</span>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <div class="card">
+                <h2>🌐 网络</h2>
+                ${(d.network||[]).slice(0,2).map(nic => `
+                    <div class="metric">
+                        <span class="metric-label">${nic.name}</span>
+                        <span class="metric-value">↓ ${fmtBytes(nic.recv_speed||0)}/s ↑ ${fmtBytes(nic.send_speed||0)}/s</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderCPU() {
+    const d = sysData.cpu || {};
+    document.getElementById('cpu').innerHTML = `
+        <div class="card">
+            <h2> CPU 详细信息</h2>
+            <div class="metric"><span class="metric-label">名称</span><span class="metric-value">${d.name||'Unknown'}</span></div>
+            <div class="metric"><span class="metric-label">使用率</span><span class="metric-value highlight">${d.usage?.toFixed(1)||0}%</span></div>
+            <div class="metric"><span class="metric-label">当前速度</span><span class="metric-value">${(d.freq_current||0).toFixed(2)} GHz</span></div>
+            <div class="metric"><span class="metric-label">基准速度</span><span class="metric-value">${(d.freq_base||0).toFixed(2)} GHz</span></div>
+            <div class="metric"><span class="metric-label">物理核心</span><span class="metric-value">${d.cores||0}</span></div>
+            <div class="metric"><span class="metric-label">逻辑处理器</span><span class="metric-value">${d.logical_cores||0}</span></div>
+            <div class="metric"><span class="metric-label">进程数</span><span class="metric-value">${d.processes||0}</span></div>
+            <div class="metric"><span class="metric-label">系统运行时间</span><span class="metric-value">${fmtTime(d.uptime||0)}</span></div>
+        </div>
+    `;
+}
+
+function renderMemory() {
+    const d = sysData.memory || {};
+    document.getElementById('memory').innerHTML = `
+        <div class="card">
+            <h2>💾 内存详细信息</h2>
+            <div class="metric"><span class="metric-label">总计</span><span class="metric-value">${fmtBytes(d.total)}</span></div>
+            <div class="metric"><span class="metric-label">已使用</span><span class="metric-value highlight">${fmtBytes(d.used)}</span></div>
+            <div class="metric"><span class="metric-label">可用</span><span class="metric-value">${fmtBytes(d.available)}</span></div>
+            <div class="metric"><span class="metric-label">使用率</span><span class="metric-value ${(d.percent||0) > 80 ? 'warning' : ''}">${d.percent?.toFixed(1)||0}%</span></div>
+            <div class="metric"><span class="metric-label">缓存</span><span class="metric-value">${fmtBytes(d.cached||0)}</span></div>
+            <div class="metric"><span class="metric-label">缓冲区</span><span class="metric-value">${fmtBytes(d.buffers||0)}</span></div>
+            <div class="metric"><span class="metric-label">分页文件总计</span><span class="metric-value">${fmtBytes(d.page_file_total||0)}</span></div>
+            <div class="metric"><span class="metric-label">分页文件已用</span><span class="metric-value">${fmtBytes(d.page_file_used||0)}</span></div>
+        </div>
+    `;
+}
+
+function renderDisk() {
+    const disks = sysData.disks || [];
+    let html = '<div class="grid">';
+    disks.forEach(disk => {
+        html += `
+            <div class="card">
+                <h2>💿 ${disk.mountpoint || disk.device}</h2>
+                <div class="metric"><span class="metric-label">设备</span><span class="metric-value">${disk.device||'N/A'}</span></div>
+                <div class="metric"><span class="metric-label">文件系统</span><span class="metric-value">${disk.fstype||'N/A'}</span></div>
+                <div class="metric"><span class="metric-label">总计</span><span class="metric-value">${fmtBytes(disk.total)}</span></div>
+                <div class="metric"><span class="metric-label">已使用</span><span class="metric-value highlight">${fmtBytes(disk.used)}</span></div>
+                <div class="metric"><span class="metric-label">可用</span><span class="metric-value">${fmtBytes(disk.free)}</span></div>
+                <div class="metric"><span class="metric-label">使用率</span><span class="metric-value ${(disk.percent||0) > 80 ? 'warning' : ''}">${disk.percent?.toFixed(1)||0}%</span></div>
+                <div class="metric"><span class="metric-label">读取速度</span><span class="metric-value">${fmtBytes(disk.read_speed||0)}/s</span></div>
+                <div class="metric"><span class="metric-label">写入速度</span><span class="metric-value">${fmtBytes(disk.write_speed||0)}/s</span></div>
+            </div>
+        `;
     });
-    ctx.stroke();
-  }
-  line(cpuHist,'#5b8cff');
-  line(memHist,'#2ecc71');
+    html += '</div>';
+    document.getElementById('disk').innerHTML = html;
 }
-async function pull(){
-  try{
-    const r=await fetch('/api/stats');const d=await r.json();
-    $('kCpu').textContent=d.cpu.toFixed(1)+'%';
-    $('kMem').textContent=d.mem_pct.toFixed(1)+'%';
-    $('kMemSub').textContent=fmtB(d.mem_used)+' / '+fmtB(d.mem_total);
-    $('kNet').textContent=fmtR(d.net_in+ d.net_out);
-    $('kNetSub').textContent='↓ '+fmtR(d.net_in)+' · ↑ '+fmtR(d.net_out);
-    cpuHist.push(d.cpu);if(cpuHist.length>N)cpuHist.shift();
-    memHist.push(d.mem_pct);if(memHist.length>N)memHist.shift();
-    draw();
-    const dt=new Date(d.ts*1000);
-    $('meta').textContent='更新于 '+dt.toLocaleTimeString()+(d.has_psutil?' · psutil':' · 原生');
-  }catch(e){$('meta').textContent='采样失败：'+e;}
+
+function renderNetwork() {
+    const interfaces = sysData.network || [];
+    let html = '<div class="grid">';
+    interfaces.forEach(nic => {
+        html += `
+            <div class="card">
+                <h2>🌐 ${nic.name}</h2>
+                <div class="metric"><span class="metric-label">状态</span><span class="metric-value">${nic.is_up ? '🟢 已连接' : '🔴 断开'}</span></div>
+                <div class="metric"><span class="metric-label">发送速度</span><span class="metric-value">${fmtBytes(nic.send_speed||0)}/s</span></div>
+                <div class="metric"><span class="metric-label">接收速度</span><span class="metric-value">${fmtBytes(nic.recv_speed||0)}/s</span></div>
+                <div class="metric"><span class="metric-label">总发送</span><span class="metric-value">${fmtBytes(nic.bytes_sent||0)}</span></div>
+                <div class="metric"><span class="metric-label">总接收</span><span class="metric-value">${fmtBytes(nic.bytes_recv||0)}</span></div>
+                <div class="metric"><span class="metric-label">速度</span><span class="metric-value">${nic.speed ? fmtBytes(nic.speed) + '/s' : 'N/A'}</span></div>
+                ${(nic.addresses||[]).map(addr => `
+                    <div class="metric"><span class="metric-label">${addr.type}</span><span class="metric-value">${addr.address}</span></div>
+                `).join('')}
+            </div>
+        `;
+    });
+    html += '</div>';
+    document.getElementById('network').innerHTML = html;
 }
-async function topPull(){
-  try{
-    const r=await fetch('/api/top');const d=await r.json();
-    $('topBody').innerHTML=(d.procs||[]).map(p=>{
-      const memStr=p.mem>1024*1024*1024?(p.mem/1024/1024/1024).toFixed(1)+' GB'
-        :p.mem>1024*1024?(p.mem/1024/1024).toFixed(0)+' MB'
-        :fmtB(p.mem);
-      return `<tr><td>${p.pid}</td><td>${p.name}</td><td class="num">${p.cpu.toFixed(1)}</td><td class="num">${memStr}</td></tr>`;
-    }).join('');
-    $('topMeta').textContent=d.procs?d.procs.length+' 条':'';
-  }catch(e){$('topBody').innerHTML='<tr><td colspan=4>top 拉取失败：'+e+'</td></tr>';}
+
+function renderProcesses(procs) {
+    document.getElementById('processes').innerHTML = `
+        <div class="card">
+            <h2>🚀 TOP 进程 (按CPU排序)</h2>
+            <table>
+                <thead>
+                    <tr><th>PID</th><th>名称</th><th>CPU %</th><th>内存</th><th>内存 %</th><th>线程</th></tr>
+                </thead>
+                <tbody>
+                    ${(procs||[]).map(p => `
+                        <tr>
+                            <td>${p.pid}</td>
+                            <td>${p.name}</td>
+                            <td>${p.cpu?.toFixed(1)||0}</td>
+                            <td>${fmtBytes(p.memory_bytes||0)}</td>
+                            <td>${p.memory_percent?.toFixed(1)||0}%</td>
+                            <td>${p.threads||0}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
 }
-pull();topPull();
-setInterval(pull,2000);
-setInterval(topPull,3000);
+
+// 初始化
+fetchSystem();
+fetchProcesses();
+setInterval(fetchSystem, 2000);
+setInterval(fetchProcesses, 3000);
 </script>
 </body>
 </html>
 """
 
-
 if __name__ == "__main__":
-    print(f"[system-monitor] listening on http://127.0.0.1:{PORT}", flush=True)
+    print(f"[System Monitor] 启动于 http://127.0.0.1:{PORT}")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

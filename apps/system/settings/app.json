@@ -7,6 +7,6 @@
   "changelog": "系统设置应用：管理仓库地址、BASIC 认证、SSL 证书校验，方便后续切换仓库。",
   "port": 8104,
   "cmd": ["apps/system/settings/app.py"],
-  "dock": false,
+  "dock": true,
   "system": true
 }

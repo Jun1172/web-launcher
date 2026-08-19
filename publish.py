@@ -1,42 +1,44 @@
 """应用发布脚本
 用法:
-  python publish.py                     # 列出所有可发布的应用
-  python publish.py <app_dir>           # 发布单个（例: apps/user/hello）
-  python publish.py --all               # 一键发布所有应用
-  python publish.py --system            # 一键发布所有系统应用
-  python publish.py --user              # 一键发布所有用户应用
-  python publish.py --list              # 仅列出，不发布
-  python publish.py --launcher          # 打包并发布 launcher 主程序更新
+python publish.py                     # 列出所有可发布的应用
+python publish.py <app_dir>           # 发布单个（例: apps/user/hello）
+python publish.py --all               # 一键发布所有应用
+python publish.py --system            # 一键发布所有系统应用
+python publish.py --user              # 一键发布所有用户应用
+python publish.py --group admin       # 一键发布指定分组的应用
+python publish.py --list              # 仅列出，不发布
+python publish.py --launcher          # 打包并发布 launcher 主程序更新
 """
 import argparse
 import datetime
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
-BASE = Path(__file__).parent.parent.resolve()
+if Path(__file__).name == "publish.py" and Path(__file__).parent.name == "apps":
+    # publish.py 在 apps/ 目录下
+    BASE = Path(__file__).parent.parent.resolve()
+else:
+    # publish.py 在根目录
+    BASE = Path(__file__).parent.resolve()
 CONFIG_JSON = BASE / "config.json"
 APPS_DIR = BASE / "apps"
-SYSTEM_DIR = APPS_DIR / "system"
-USER_DIR = APPS_DIR / "user"
-
 
 def load_config():
     if CONFIG_JSON.exists():
         return json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
     return {}
 
-
 CONFIG = load_config()
 PUBLISH_CFG = CONFIG.get("publish", {})
 REPO_CFG = CONFIG.get("repo", {})
-SERVER = PUBLISH_CFG.get("server", "jun@1.15.30.237")
+SERVER = PUBLISH_CFG.get("server", "ubuntu@1.15.30.237")
 REMOTE = PUBLISH_CFG.get("remote_path", "/var/www/repo")
 PACKAGES_DIR = PUBLISH_CFG.get("packages_dir", "packages")
-
 
 def sha256(path):
     h = hashlib.sha256()
@@ -44,7 +46,6 @@ def sha256(path):
         for chunk in iter(lambda: f.read(1 << 16), b""):
             h.update(chunk)
     return h.hexdigest()
-
 
 def _ensure_remote_dirs():
     """确保远端 packages/ 目录存在（scp 不会自动创建多级目录）。"""
@@ -55,7 +56,6 @@ def _ensure_remote_dirs():
         )
     except Exception as e:
         print(f"  ⚠ ssh mkdir 失败（可能目录已存在）: {e}")
-
 
 def _verify_upload(pkg_path):
     """上传后通过 HTTP HEAD 验证文件是否可访问。返回 True/False。"""
@@ -73,20 +73,41 @@ def _verify_upload(pkg_path):
         print(f"  ⚠ HTTP 验证失败 ({pkg_path}): {e}")
         return False
 
+def _find_all_app_dirs():
+    """递归扫描 APPS_DIR 下所有含 app.json 的目录，返回 [app_dir, ...] 列表。"""
+    dirs = []
+    if not APPS_DIR.exists():
+        return dirs
+    for app_json in sorted(APPS_DIR.rglob("app.json")):
+        d = app_json.parent
+        if d.name.endswith((".bak", ".tmp.new", ".zip.tmp")):
+            continue
+        dirs.append(d)
+    return dirs
 
 def discover_apps(kind="all"):
     """返回 [app_dir, ...] 列表
-    kind: 'all' | 'system' | 'user'
+    kind: 'all' | 任意分组名 (如 'system', 'user', 'admin')
+    通过 app.json 的 group 字段判断类型，兼容旧版 system 字段
     """
-    dirs = []
-    if kind in ("all", "system"):
-        if SYSTEM_DIR.exists():
-            dirs += sorted([d for d in SYSTEM_DIR.iterdir() if d.is_dir() and (d / "app.json").exists()])
-    if kind in ("all", "user"):
-        if USER_DIR.exists():
-            dirs += sorted([d for d in USER_DIR.iterdir() if d.is_dir() and (d / "app.json").exists()])
-    return dirs
-
+    all_dirs = _find_all_app_dirs()
+    if kind == "all":
+        return all_dirs
+    
+    result = []
+    for d in all_dirs:
+        try:
+            meta = json.loads((d / "app.json").read_text(encoding="utf-8"))
+            # 核心改动：读取 group 字段，兼容旧版 system 字段
+            app_group = meta.get("group")
+            if app_group is None:
+                app_group = "system" if meta.get("system") else "user"
+        except Exception:
+            continue
+            
+        if kind == app_group:
+            result.append(d)
+    return result
 
 def print_apps_table(apps):
     """打印应用清单表格"""
@@ -99,14 +120,19 @@ def print_apps_table(apps):
             meta = json.loads((d / "app.json").read_text(encoding="utf-8"))
         except Exception as e:
             meta = {"id": d.name, "name": f"⚠ app.json 损坏: {e}"}
-        kind = "SYSTEM" if d.parent.name == "system" else "USER  "
+        
+        # 核心改动：显示 group 而不是 SYSTEM/USER
+        group = meta.get("group")
+        if group is None:
+            group = "system" if meta.get("system") else "user"
+            
         rel = d.relative_to(BASE).as_posix()
-        rows.append((kind, rel, meta.get("id", "?"), meta.get("version", "?"), meta.get("name", "?")))
-    print(f"  {'类型':6} {'路径':30} {'id':12} {'版本':8} 名称")
-    print(f"  {'-'*6} {'-'*30} {'-'*12} {'-'*8} {'-'*20}")
+        rows.append((group.upper(), rel, meta.get("id", "?"), meta.get("version", "?"), meta.get("name", "?")))
+        
+    print(f"  {'分组':8} {'路径':30} {'id':12} {'版本':8} 名称")
+    print(f"  {'-'*8} {'-'*30} {'-'*12} {'-'*8} {'-'*20}")
     for k, r, aid, v, n in rows:
-        print(f"  {k:6} {r:30} {aid:12} {v:8} {n}")
-
+        print(f"  {k:8} {r:30} {aid:12} {v:8} {n}")
 
 def ensure_index():
     """下载远端 index.json，如果不存在就初始化一个空的，返回 index dict 和本地临时文件"""
@@ -122,58 +148,55 @@ def ensure_index():
         index = {"repo": "my-launcher-repo", "updated": "", "apps": []}
     return index, index_tmp
 
-
 def build_entry(meta, zip_path):
-    """生成 index.json 里的单个 app 条目
-    注意：env 故意不在白名单中（防密钥上传到远端仓库），由部署方本地填写
-    """
+    """生成 index.json 里的单个 app 条目"""
+    # 核心改动：白名单中 system 替换为 group
     FIELDS = ("id", "name", "icon", "color", "version", "changelog",
-              "port", "cmd", "dock", "system",
+              "port", "cmd", "dock", "group", 
               "ready_check", "workdir", "stop_signal", "stop_timeout",
               "restart_policy", "requires", "released")
     entry = {k: meta[k] for k in FIELDS if k in meta}
+    
+    # 兼容处理：如果旧配置没有 group，自动推断并写入
+    if "group" not in entry:
+        entry["group"] = "system" if meta.get("system") else "user"
+        
     entry["pkg"] = f"{PACKAGES_DIR}/{zip_path.name}"
     entry["size"] = zip_path.stat().st_size
     entry["sha256"] = sha256(zip_path)
     entry.setdefault("released", datetime.datetime.now().isoformat())
     return entry
 
-
 MAX_VERSIONS = 0   # 不保留历史版本，已移除版本回退功能
 
-
 def publish_one(app_dir, *, upload=True, index_override=None):
-    """发布单个应用
-    - upload=False: 只打包不上传（测试用）
-    - index_override: 传入的 index dict（批量发布时共用一个）；不传时会自己拉远端
-    返回 (success, index_dict_or_None, entry_or_None)
-    """
+    """发布单个应用"""
     app_dir = Path(app_dir)
     if not app_dir.is_absolute():
         app_dir = (BASE / app_dir).resolve()
-
     app_json = app_dir / "app.json"
+    
     if not app_json.exists():
         print(f"❌ 错误: {app_json} 不存在，应用必须包含 app.json")
         return False, None, None
-
     try:
         meta = json.loads(app_json.read_text(encoding="utf-8"))
     except Exception as e:
         print(f"❌ {app_json} 解析失败: {e}")
         return False, None, None
-
+        
     for required in ("id", "version"):
         if required not in meta:
             print(f"❌ app.json 缺少字段: {required}")
             return False, None, None
 
     zip_name = f"{meta['id']}-{meta['version']}.zip"
-    kind_tag = "🛡️" if (app_dir.parent.name == "system" or meta.get("system")) else "📦"
+    
+    # 核心改动：根据 group 决定图标
+    group = meta.get("group", "system" if meta.get("system") else "user")
+    kind_tag = "🛡️" if group == "system" else "📦"
+    print(f"{kind_tag} 打包 {meta['name']} v{meta['version']} (id={meta['id']}, group={group})...")
 
-    print(f"{kind_tag} 打包 {meta['name']} v{meta['version']} (id={meta['id']})...")
-
-    # 打包：把 app 目录以 "apps/{system|user}/<id>/" 的 arcname 写入 zip
     zip_path = BASE / zip_name
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for f in app_dir.rglob("*"):
@@ -183,14 +206,15 @@ def publish_one(app_dir, *, upload=True, index_override=None):
                 continue
             if f.name.endswith(".zip.tmp") or f.name == zip_name:
                 continue
-            arcname = f.relative_to(APPS_DIR.parent)  # e.g. apps/user/hello/app.json
+            arcname = f.relative_to(APPS_DIR.parent)  
             z.write(f, arcname.as_posix())
-    print(f"   ✓ {zip_name} ({zip_path.stat().st_size} bytes, sha256={sha256(zip_path)[:12]}...)")
 
+    print(f"   ✓ {zip_name} ({zip_path.stat().st_size} bytes, sha256={sha256(zip_path)[:12]}...)")
     entry = build_entry(meta, zip_path)
+    
     index = index_override
     index_tmp = None
-
+    
     if upload:
         _ensure_remote_dirs()
         print(f"🚀 上传 {zip_name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
@@ -204,14 +228,14 @@ def publish_one(app_dir, *, upload=True, index_override=None):
             zip_path.unlink(missing_ok=True)
             return False, None, None
         print(f"   ✓ 上传完成")
+        
         if not _verify_upload(entry["pkg"]):
             print(f"  ⚠ 上传后 HTTP 验证失败，文件可能不可访问")
 
-        # 拉 / 更新 index
         if index is None:
             print("📋 更新远端 index.json...")
             index, index_tmp = ensure_index()
-        # 直接替换同 id 条目（不保留历史版本）
+
         index["apps"] = [a for a in index.get("apps", []) if a["id"] != meta["id"]] + [entry]
         index["updated"] = datetime.datetime.now().isoformat()
 
@@ -223,7 +247,6 @@ def publish_one(app_dir, *, upload=True, index_override=None):
     if upload and index is not None:
         return True, index, entry
     return True, None, None
-
 
 def write_and_upload_index(index, index_tmp=None):
     """写入本地 index_tmp 并上传到远端"""
@@ -237,7 +260,6 @@ def write_and_upload_index(index, index_tmp=None):
     )
     print(f"   ✓ index.json 更新完成（{len(index.get('apps', []))} 个应用）")
 
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="应用发布工具",
@@ -245,50 +267,49 @@ def parse_args():
         epilog="示例:\n"
                "  python publish.py apps/user/hello                    发布单个 app\n"
                "  python publish.py --all                               发布所有应用\n"
-               "  python publish.py --system                            发布全部系统应用\n"
-               "  python publish.py --user                              发布全部用户应用\n"
-               "  python publish.py --list                              列出所有应用\n"
-               "  python publish.py --launcher --changelog \"修复 bug\"  发布 launcher 更新\n",
+               "  python publish.py --group admin                       发布 admin 分组应用\n"
     )
     g = parser.add_mutually_exclusive_group()
     g.add_argument("app_dir", nargs="?", help="要发布的单个应用路径")
     g.add_argument("--all", action="store_true", help="发布所有应用")
-    g.add_argument("--system", action="store_true", help="仅发布系统应用")
-    g.add_argument("--user", action="store_true", help="仅发布用户应用")
+    g.add_argument("--system", action="store_true", help="仅发布系统应用 (等同于 --group system)")
+    g.add_argument("--user", action="store_true", help="仅发布用户应用 (等同于 --group user)")
+    g.add_argument("--group", type=str, help="仅发布指定分组的应用 (例: --group admin)")
     g.add_argument("--list", action="store_true", help="列出所有可发布的应用")
     g.add_argument("--launcher", action="store_true", help="打包并发布 launcher 主程序更新")
+    
     parser.add_argument("--build", action="store_true", help="编译 launcher 为可执行二进制（配合 --launcher）")
     parser.add_argument("--dry-run", action="store_true", help="只打包不上传（测试打包）")
     parser.add_argument("--changelog", type=str, default="", help="launcher 更新说明（配合 --launcher 使用）")
     return parser.parse_args()
 
-
 def build_launcher_zip(version: str, changelog: str) -> Path:
-    """把 launcher 基础文件打包成 zip：
-    包含: launcher.py, launcher/ 包目录（核心代码）, config.json（去除敏感字段）,
-          apps/publish.py, apps/system/ 系统应用
-    返回 zip 文件路径（BASE/launcher-<version>.zip）
-    """
-    # launcher 核心文件（相对 BASE）
+    """把 launcher 基础文件打包成 zip"""
     include_patterns = [
-        "launcher.py",
-        "config.json",
-        "README.md",
-        "apps/publish.py",
-        "apps/README.md",
+        "launcher.py", "config.json", "README.md",
+        "apps/publish.py", "apps/README.md",
     ]
-    # launcher/ 包目录：所有 .py 模块 + templates/ 模板文件
+    
     launcher_pkg_dir = BASE / "launcher"
     launcher_pkg_files = []
     if launcher_pkg_dir.exists():
         for p in launcher_pkg_dir.rglob("*"):
             if p.is_file() and not (p.suffix == ".pyc" or p.name == "__pycache__"):
                 launcher_pkg_files.append(p.relative_to(BASE))
-    # apps/system/ 系统应用目录骨架（每个系统应用的全部文件）
-    system_apps_dir = APPS_DIR / "system"
+
+    # 核心改动：打包所有 group=="system" 的应用
     system_files = []
-    if system_apps_dir.exists():
-        for p in system_apps_dir.rglob("*"):
+    for app_dir in _find_all_app_dirs():
+        try:
+            meta = json.loads((app_dir / "app.json").read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        
+        app_group = meta.get("group", "system" if meta.get("system") else "user")
+        if app_group != "system":
+            continue
+            
+        for p in app_dir.rglob("*"):
             if p.is_file() and not (p.suffix == ".pyc" or p.name == "__pycache__" or ".venv" in p.parts):
                 system_files.append(p.relative_to(BASE))
 
@@ -300,13 +321,11 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for rel in files:
             full = BASE / rel
-            # config.json 特别处理：去掉 publish/server 等敏感字段，只保留客户端需要的
             if rel == Path("config.json"):
                 try:
                     cfg = json.loads(full.read_text(encoding="utf-8"))
                 except Exception:
                     cfg = {}
-                # 只保留客户端安全字段
                 safe_cfg = {
                     "launcher": cfg.get("launcher", {}),
                     "repo": {"url": cfg.get("repo", {}).get("url", ""), "verify_ssl": cfg.get("repo", {}).get("verify_ssl", False)},
@@ -315,20 +334,15 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
                 z.writestr(rel.as_posix(), json.dumps(safe_cfg, ensure_ascii=False, indent=2))
                 continue
             z.write(full, rel.as_posix())
-
     return zip_path
 
-
 def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
-    """发布 launcher 主程序更新
-
-    build: 同时编译为可执行二进制并上传。
-    """
+    """发布 launcher 主程序更新"""
     version = CONFIG.get("launcher", {}).get("version")
     if not version:
         print("❌ config.json 的 launcher.version 未配置，无法发布 launcher 更新")
         return False
-
+        
     print(f"🚀 Launcher 更新: v{version}")
     if changelog:
         print(f"   更新说明: {changelog}")
@@ -336,7 +350,7 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
     zip_path = build_launcher_zip(version, changelog)
     print(f"   ✓ {zip_path.name} ({zip_path.stat().st_size} bytes, "
           f"sha256={sha256(zip_path)[:12]}...)")
-
+          
     entry = {
         "version": version,
         "changelog": changelog,
@@ -346,7 +360,6 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
         "released": datetime.datetime.now().isoformat(),
     }
 
-    # ── 可选：编译二进制 ──
     binary_path = None
     if build:
         try:
@@ -354,10 +367,7 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
             from apps.build_launcher import build as do_build
             binary_path = do_build(clean=True)
             if binary_path:
-                binary_name = f"launcher-{version}" + (
-                    ".exe" if sys.platform == "win32" else ""
-                )
-                # 复制到 packages 目录便于上传
+                binary_name = f"launcher-{version}" + (".exe" if sys.platform == "win32" else "")
                 pkg_dir = BASE / PACKAGES_DIR
                 pkg_dir.mkdir(parents=True, exist_ok=True)
                 dest = pkg_dir / binary_name
@@ -371,7 +381,6 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
 
     index = None
     index_tmp = None
-
     if upload:
         _ensure_remote_dirs()
         print(f"🚀 上传 {zip_path.name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
@@ -384,12 +393,11 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
             print(f"❌ 上传失败: {e.stderr or e.stdout or e}")
             zip_path.unlink(missing_ok=True)
             return False
-
         print(f"   ✓ 上传完成")
+        
         if not _verify_upload(entry["pkg"]):
-            print(f"  ⚠ 上传后 HTTP 验证失败，文件可能不可访问")
+            print(f"  ⚠ HTTP 验证失败，文件可能不可访问")
 
-        # 上传二进制
         if build and binary_path and "binary" in entry:
             bin_file = BASE / entry["binary"]
             print(f"🚀 上传 {bin_file.name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
@@ -421,11 +429,9 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
     print("✅ launcher 更新发布完成！" if upload else "✅ launcher 打包完成（未上传）")
     return True
 
-
 def main():
     args = parse_args()
-
-    # --launcher
+    
     if args.launcher:
         ok = publish_launcher(
             upload=not args.dry_run,
@@ -434,8 +440,9 @@ def main():
         )
         sys.exit(0 if ok else 4)
 
-    # 列出所有 / 无参数时列出
-    if args.list or (not any([args.app_dir, args.all, args.system, args.user, args.list])):
+    # 核心改动：支持 --group 参数
+    has_filter = any([args.app_dir, args.all, args.system, args.user, args.group, args.list])
+    if args.list or not has_filter:
         print("📋 可发布的应用清单:")
         print_apps_table(discover_apps("all"))
         v = CONFIG.get("launcher", {}).get("version", "未配置")
@@ -446,14 +453,12 @@ def main():
         print("\n用法:")
         print("  发布单个  : python publish.py apps/user/hello")
         print("  发布全部  : python publish.py --all")
-        print("  系统应用  : python publish.py --system")
-        print("  用户应用  : python publish.py --user")
+        print("  分组发布  : python publish.py --group admin")
         print("  只打包    : python publish.py apps/user/hello --dry-run")
-        print("  Launcher  : python publish.py --launcher --changelog \"说明\"")
         sys.exit(0)
 
     upload = not args.dry_run
-
+    
     if args.app_dir:
         ok, index, _ = publish_one(args.app_dir, upload=upload)
         if not ok:
@@ -463,17 +468,25 @@ def main():
         print("✅ 发布完成！" if upload else "✅ 打包完成（未上传）")
         return
 
-    kind = "all" if args.all else ("system" if args.system else "user")
+    # 核心改动：解析 kind
+    if args.group:
+        kind = args.group
+    elif args.system:
+        kind = "system"
+    elif args.user:
+        kind = "user"
+    else:
+        kind = "all"
+        
     apps = discover_apps(kind)
     if not apps:
-        print(f"⚠ 没有找到类型为 {kind!r} 的应用")
+        print(f"⚠ 没有找到分组为 {kind!r} 的应用")
         sys.exit(1)
-
-    print(f"🚀 开始批量发布 ({kind})，共 {len(apps)} 个应用:")
+        
+    print(f"🚀 开始批量发布 (group={kind})，共 {len(apps)} 个应用:")
     print_apps_table(apps)
     print()
 
-    # 拉一次 index，批量发布共用
     index = None
     index_tmp = None
     if upload:
@@ -487,7 +500,7 @@ def main():
             ok, new_index, _ = publish_one(d, upload=upload, index_override=index)
             if ok:
                 if upload and new_index is not None:
-                    index = new_index  # 合并 entry 已经在 publish_one 里做了
+                    index = new_index  
                 success += 1
             else:
                 failed += 1
@@ -502,7 +515,6 @@ def main():
     print(f"\n{'='*40}\n批量发布完成: ✅ 成功 {success} 个 · ❌ 失败 {failed} 个")
     if failed:
         sys.exit(3)
-
 
 if __name__ == "__main__":
     main()

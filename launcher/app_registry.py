@@ -1,19 +1,17 @@
 """app_registry - 应用扫描与注册表维护
 
 职责：
-- 扫描 apps/system 与 apps/user 下的 app.json，生成应用清单（带 system 标记）
+- 递归扫描 apps/ 下所有含 app.json 的目录，生成应用清单（通过 metadata.system 标记类型）
 - 维护模块级全局变量 system_apps / user_apps / REGISTRY
 - 提供 reload_apps() / is_system_app() / is_user_app() / resolve_cmd() 等接口
 
-依赖 launcher.config 提供路径与 sys.executable；不依赖进程/仓库模块。
+依赖 launcher.config 提供 APPS_DIR 与 sys.executable；不依赖进程/仓库模块。
 """
 import json
 import sys
 from pathlib import Path
 
-from .config import (
-    BASE, SYSTEM_APPS_DIR, USER_APPS_DIR,
-)
+from .config import BASE, APPS_DIR
 
 # 模块级全局注册表（所有视图共享）
 system_apps = []
@@ -41,30 +39,30 @@ def resolve_cmd(meta):
     return out
 
 
-def _scan_apps(root, *, system):
-    """扫描 root/*/app.json，返回 [{meta with id, system, cmd resolved}, ...]。
-
-    跳过 .bak / .tmp.new / .zip.tmp 等非应用目录，避免备份目录被当成应用。
-    """
-    apps = []
-    if not root.exists():
-        return apps
-    for d in sorted(root.iterdir()):
-        if not d.is_dir():
-            continue
-        # 跳过备份/临时目录（原子替换产生的 .bak/.tmp.new 等）
+def _find_all_app_dirs():
+    """递归扫描 APPS_DIR 下所有含 app.json 的目录，返回 [app_dir, ...]。"""
+    dirs = []
+    if not APPS_DIR.exists():
+        return dirs
+    for app_json in sorted(APPS_DIR.rglob("app.json")):
+        d = app_json.parent
         if d.name.endswith((".bak", ".tmp.new", ".zip.tmp")):
             continue
-        app_json = d / "app.json"
-        if not app_json.exists():
-            continue
+        dirs.append(d)
+    return dirs
+
+
+def _scan_all_apps():
+    """递归扫描 APPS_DIR 下所有 app.json，返回 [{meta with id, system, cmd resolved}, ...]。"""
+    apps = []
+    for d in _find_all_app_dirs():
         try:
-            meta = json.loads(app_json.read_text(encoding="utf-8"))
+            meta = json.loads((d / "app.json").read_text(encoding="utf-8"))
         except (json.JSONDecodeError, KeyError) as e:
             print(f"⚠ 应用 {d.name} 加载失败: {e}")
             continue
         meta.setdefault("id", d.name)
-        meta["system"] = system
+        meta["system"] = bool(meta.get("system"))
         meta["cmd"] = resolve_cmd(meta)
         meta.setdefault("version", "0.0.1")
         meta.setdefault("changelog", "")
@@ -74,13 +72,13 @@ def _scan_apps(root, *, system):
 
 
 def load_system_apps():
-    """扫描 system 目录。"""
-    return _scan_apps(SYSTEM_APPS_DIR, system=True)
+    """扫描所有目录，筛选 system:true 的应用。"""
+    return [a for a in _scan_all_apps() if a.get("system")]
 
 
 def load_user_apps():
-    """扫描 user 目录。"""
-    return _scan_apps(USER_APPS_DIR, system=False)
+    """扫描所有目录，筛选 system:false 的应用。"""
+    return [a for a in _scan_all_apps() if not a.get("system")]
 
 
 def rebuild_registry():

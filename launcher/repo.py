@@ -75,9 +75,9 @@ def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None
                 return False, "zip 包含非法路径"
             files = [n for n in all_names if not n.endswith("/")]
 
-            # 识别前缀：格式 A（apps/{kind}/<aid>/）、格式 B（<aid>/）、格式 C（无前缀）
+            # 识别前缀：格式 A（apps/<dir>/<aid>/）、格式 B（<aid>/）、格式 C（无前缀）
             strip_prefix = ""
-            m_a = re.match(r"^(apps/(?:system|user)/[^/]+/)", files[0]) if files else None
+            m_a = re.match(r"^(apps/[^/]+/[^/]+/)", files[0]) if files else None
             if m_a and all(n.startswith(m_a.group(1)) for n in files):
                 strip_prefix = m_a.group(1)
             elif files and all(n.startswith(aid + "/") for n in files):

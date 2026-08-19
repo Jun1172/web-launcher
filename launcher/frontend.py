@@ -13,9 +13,20 @@
 HTML 模板存放在 templates/home.html，通过占位符替换注入动态数据，
 避免本文件中出现 300+ 行的内联字符串（模块化维护性要求 FR-5.4）。
 """
+import sys  # 👈 新增导入
 from pathlib import Path
 
-_TEMPLATES_DIR = Path(__file__).parent / "templates"
+def get_resource_path(relative_path):
+    """获取资源绝对路径，兼容 PyInstaller 打包态"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 会将 --add-data 的文件解压到 sys._MEIPASS 目录
+        base_path = Path(sys._MEIPASS)
+    else:
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
+# 👇 修改此处，匹配你之前的打包命令 --add-data "launcher/templates;launcher/templates"
+_TEMPLATES_DIR = get_resource_path("launcher/templates")
 _HOME_TEMPLATE_PATH = _TEMPLATES_DIR / "home.html"
 
 # 模板缓存（进程内只读，首次加载后不复用磁盘）

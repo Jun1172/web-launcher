@@ -8,12 +8,20 @@
 
 不依赖 launcher 其它模块，避免循环导入。
 """
+import sys  # 👈 新增导入
 import json
 import ssl
 import re
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent.parent   # 项目根（即 launcher.py 所在目录）
+# 👇 【核心修改】兼容 PyInstaller 打包态与开发态
+if getattr(sys, 'frozen', False):
+    # 打包后：BASE 指向 launcher.exe 所在的真实目录
+    BASE = Path(sys.executable).parent
+else:
+    # 开发态：BASE 指向项目根目录 (launcher.py 所在目录)
+    BASE = Path(__file__).resolve().parent.parent
+
 CONFIG_JSON = BASE / "config.json"
 APPS_DIR = BASE / "apps"
 SYSTEM_APPS_DIR = APPS_DIR / "system"

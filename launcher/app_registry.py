@@ -59,7 +59,7 @@ def _scan_all_apps():
         try:
             meta = json.loads((d / "app.json").read_text(encoding="utf-8"))
         except (json.JSONDecodeError, KeyError) as e:
-            print(f"⚠ 应用 {d.name} 加载失败: {e}")
+            print(f"应用 {d.name} 加载失败: {e}")
             continue
         meta.setdefault("id", d.name)
         meta["system"] = bool(meta.get("system"))
@@ -105,7 +105,7 @@ def _mark_port_conflicts(apps):
         elif "port_conflict" in a:
             del a["port_conflict"]  # 清除上次标记，避免 reload 后残留
     if conflict_ids:
-        print(f"⚠ 端口冲突: {conflict_ids}")
+        print(f"端口冲突: {conflict_ids}")
 
 
 def reload_apps():

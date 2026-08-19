@@ -1,0 +1,1 @@
+pyinstaller -w -F -i .\doc\images\launcher.ico --add-data "launcher/templates;launcher/templates" launcher.py

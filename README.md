@@ -5,6 +5,10 @@
 
 适用场景：嵌入式主板、工控机、边缘设备、本地开发机——只要能跑 Python，就能用 launcher 管理任意语言写的应用。
 
+> 📚 **完整文档请查阅 Wiki**：[GitHub Wiki](https://github.com/Jun1172/web-launcher/wiki) | [Gitee Wiki](https://gitee.com/jun626/web-launcher/wikis)
+
+---
+
 ## 📌 项目定位
 
 | 维度 | 说明 |
@@ -30,7 +34,7 @@
 ### 3. 系统应用 / 用户应用分层 + 自定义分组
 - **系统应用**（`apps/system/`）：默认安装、接受更新、不可卸载（受保护分组 `"system"`）
 - **用户应用**（`apps/user/`）：可安装 / 卸载
-- **自定义分组**：app.json 的 `group` 字段可填任意值（如 `"etws"`、`"admin"`），发布与卸载按此分组；缺省时根据 `system` 字段推导为 `"system"` 或 `"user"`
+- **自定义分组**：app.json 的 `group` 字段可填任意值（如 `"business"`、`"admin"`），发布与卸载按此分组；缺省时根据 `system` 字段推导为 `"system"` 或 `"user"`
 
 ### 4. 仓库索引 + 原子安装
 - 远端仓库是一个 HTTP 静态目录：`index.json` + `packages/<id>-<ver>.zip` + `launcher-<ver>.zip`
@@ -142,7 +146,7 @@ python launcher.py
 | `released` | string | ❌ | — | 发布时间（ISO 8601） |
 | `dock` | bool | ❌ | false | 是否常驻底部 Dock（出厂默认；用户可用 layout.json 覆盖） |
 | `system` | bool | ❌ | false | 是否系统应用（一般不手填，按目录自动推导） |
-| `group` | string | ❌ | 推导 | 自定义分组（如 `"etws"`、`"admin"`）；缺省时按 `system` 推导 |
+| `group` | string | ❌ | 推导 | 自定义分组（如 `"business"`、`"admin"`）；缺省时按 `system` 推导 |
 | `requires` | object | ❌ | `{}` | 依赖声明（**当前未校验，仅作文档**，见路线图） |
 
 ### 字段当前行为说明
@@ -224,7 +228,7 @@ python publish.py --system
 python publish.py --user
 
 # 发布指定分组
-python publish.py --group etws
+python publish.py --group business
 
 # 只打包不上传（测试）
 python publish.py apps/user/hello --dry-run
@@ -422,7 +426,7 @@ web-launcher/
 - [x] 安装 / 卸载 / 历史版本回退 + 原子解压 + sha256 校验
 - [x] 仓库索引 + BASIC 认证 + SSL 开关
 - [x] system/user 两级目录 + 受保护分组（system 不可卸载）
-- [x] 自定义 group 字段（etws / admin 等）
+- [x] 自定义 group 字段（business / admin 等）
 - [x] launcher 自更新（源码 zip 覆盖 + 编译态 OTA 替换脚本）
 - [x] 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务 + 关于 + 商店详情弹窗）
 - [x] 用户级布局覆盖（layout.json：dock / hidden）

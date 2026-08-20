@@ -8,11 +8,11 @@
 |------|------|----------|----------|----------|
 | 系统应用 | `apps/system/` | ✅ | ✅ | ❌ |
 | 用户应用 | `apps/user/` | ❌ | ✅ | ✅ |
-| 自定义分组 | `apps/<group>/`（如 `apps/etws/`） | ❌ | ✅ | ✅ |
+| 自定义分组 | `apps/<group>/`（如 `apps/business/`） | ❌ | ✅ | ✅ |
 
 - **系统应用**：launcher 启动时自动注册，受保护分组 `"system"`，不可卸载；适合放应用商店、系统工具、监控等基础设施
 - **用户应用**：默认走 `apps/user/`，由用户通过应用商店安装/卸载
-- **自定义分组**：app.json 写 `"group": "etws"`，发布与卸载按此分组；目录可在 `apps/<group>/` 下（也可仍在 `apps/user/` 下，靠 group 字段决定归属）
+- **自定义分组**：app.json 写 `"group": "business"`，发布与卸载按此分组；目录可在 `apps/<group>/` 下（也可仍在 `apps/user/` 下，靠 group 字段决定归属）
 
 ## 📄 app.json Schema
 
@@ -135,7 +135,7 @@ python publish.py apps/user/<id>
 python publish.py --user
 
 # 按分组发布
-python publish.py --group etws
+python publish.py --group business
 ```
 
 ## 🔌 端口分配约定

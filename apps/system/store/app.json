@@ -8,5 +8,6 @@
   "port": 8100,
   "cmd": ["apps/system/store/app.py"],
   "dock": true,
-  "system": true
+  "system": true,
+  "group": "system"
 }

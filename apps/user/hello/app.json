@@ -5,8 +5,9 @@
   "color": "#ff6b6b",
   "version": "1.0.0",
   "changelog": "最简单的 demo：计数器 + 实时时间，验证 launcher 拉起进程与 iframe 嵌入。",
-  "port": 8114,
+  "port": 8122,
   "cmd": ["apps/user/hello/app.py"],
   "dock": false,
-  "system": false
+  "system": false,
+  "group": "user"
 }

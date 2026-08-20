@@ -8,6 +8,7 @@
   "cmd": ["apps/user/proc-demo/app.py"],
   "dock": false,
   "system": false,
+  "group": "user",
   "ready_check": {
     "type": "process",
     "timeout": 2

@@ -8,6 +8,7 @@
   "cmd": ["apps/user/file-demo/app.py"],
   "dock": false,
   "system": false,
+  "group": "user",
   "ready_check": {
     "type": "file",
     "file": "apps/user/file-demo/var/ready",

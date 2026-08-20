@@ -5,10 +5,6 @@
 
 适用场景：嵌入式主板、工控机、边缘设备、本地开发机——只要能跑 Python，就能用 launcher 管理任意语言写的应用。
 
-> 📚 **完整文档请查阅 Wiki**：[GitHub Wiki](https://github.com/Jun1172/web-launcher/wiki) | [Gitee Wiki](https://gitee.com/jun626/web-launcher/wikis)
-
----
-
 ## 📌 项目定位
 
 | 维度 | 说明 |

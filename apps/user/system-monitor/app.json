@@ -5,10 +5,11 @@
   "color": "#3498db",
   "version": "1.0.0",
   "changelog": "实时监控 demo：CPU/内存折线图、TOP 进程列表、网络流量。",
-  "port": 8130,
+  "port": 8125,
   "cmd": ["apps/user/system-monitor/app.py"],
   "dock": false,
   "system": false,
+  "group": "user",
   "ready_check": {
     "type": "http",
     "timeout": 5

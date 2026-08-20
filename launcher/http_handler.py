@@ -153,14 +153,18 @@ class Handler(BaseHTTPRequestHandler):
             if not app:
                 self._json({"ok": False, "url": None})
                 return
-            # launcher 分配端口 + 启动 + 等待就绪，返回 actual_port 或 None
-            port = pm_open_app(app)
+            # launcher 分配端口 + 启动 + 等待就绪，返回 actual_port / True / None
+            result = pm_open_app(app)
             has_cmd = bool(app.get("cmd"))
             if not has_cmd:
                 # stub 应用（无进程，纯占位页）
                 self._json({"ok": True, "url": f"/stub?id={app['id']}", "reason": None})
-            elif port:
-                # 启动成功，用 actual_port 生成 iframe URL
+            elif result is True:
+                # 无端口应用，进程已启动（无 iframe URL）
+                self._json({"ok": True, "url": None, "reason": None})
+            elif result:
+                # 有端口应用启动成功，用 actual_port 生成 iframe URL
+                port = result
                 self._json({"ok": True, "url": f"http://127.0.0.1:{port}", "reason": None})
             else:
                 # 启动失败（进程崩溃或端口被占）

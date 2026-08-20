@@ -7,7 +7,6 @@
   通过环境变量 LAUNCHER_APP_PORT 传给 app，启动并等待就绪
 - close_app(): 优雅 terminate → 2 秒兜底 taskkill/killpg 进程树，避免孤儿进程
 - terminate_all(): Launcher atexit 钩子调用，或"全部清除"调用
-- port_ready(): TCP 轮询直到端口监听
 
 端口分配策略（launcher 主导，app 开发者不管冲突）：
 - app.json 的 port 字段作为"建议端口"（optional）
@@ -18,23 +17,10 @@
 import os
 import socket
 import subprocess
-import sys
 import time
 
 procs = {}         # {app_id: subprocess.Popen}
 actual_ports = {}  # {app_id: 实际监听端口（int）}
-
-
-def port_ready(port, timeout=6):
-    """TCP connect 轮询直到 127.0.0.1:port 监听成功；timeout 秒内失败返回 False。"""
-    end = time.time() + timeout
-    while time.time() < end:
-        try:
-            with socket.create_connection(("127.0.0.1", int(port)), timeout=0.3):
-                return True
-        except OSError:
-            time.sleep(0.1)
-    return False
 
 
 def _alloc_port(preferred=None):
@@ -72,7 +58,8 @@ def open_app(app):
     """启动应用进程，分配端口，通过 env 传给 app。返回 actual_port（int）或 None。
 
     - 无 cmd（stub）: 返回 None（无进程无端口）
-    - 有 cmd: 分配端口 → 传 env LAUNCHER_APP_PORT → Popen → 等待就绪 → 返回 port
+    - 有 cmd 无 port: 启动进程，检查进程存活即可（无端口应用）
+    - 有 cmd 有 port: 分配端口 → 传 env LAUNCHER_APP_PORT → Popen → 轮询端口就绪
     - 启动失败（崩溃/超时）: 返回 None
 
     app.json 的 port 字段作为"建议端口"，被占时 launcher 自动分配随机端口。
@@ -84,31 +71,40 @@ def open_app(app):
     if p and p.poll() is None:
         return actual_ports.get(aid)  # 已在运行，返回已分配端口
 
-    # 分配端口：优先 app.json 建议端口，被占则随机
-    port = _alloc_port(app.get("port"))
-    actual_ports[aid] = port
+    has_port = bool(app.get("port"))
 
-    # 通过环境变量传端口给 app
-    env = os.environ.copy()
-    env["LAUNCHER_APP_PORT"] = str(port)
-    p = subprocess.Popen(app["cmd"], env=env, **_popen_kwargs())
-    procs[aid] = p
+    if has_port:
+        # 有端口的应用：分配端口 → 传 env → 轮询端口就绪
+        port = _alloc_port(app.get("port"))
+        actual_ports[aid] = port
 
-    # 轮询端口就绪，同时检查进程是否已崩溃
-    end = time.time() + 6
-    while time.time() < end:
-        if p.poll() is not None:
-            return None  # 进程崩溃
-        try:
-            with socket.create_connection(("127.0.0.1", int(port)), timeout=0.3):
-                # 端口 ready，等 0.3s 确认进程稳定
-                time.sleep(0.3)
-                if p.poll() is None:
-                    return port
-                return None  # 进程崩了
-        except OSError:
-            time.sleep(0.1)
-    return None  # 超时
+        env = os.environ.copy()
+        env["LAUNCHER_APP_PORT"] = str(port)
+        p = subprocess.Popen(app["cmd"], env=env, **_popen_kwargs())
+        procs[aid] = p
+
+        # 轮询端口就绪，同时检查进程是否已崩溃
+        end = time.time() + 6
+        while time.time() < end:
+            if p.poll() is not None:
+                return None  # 进程崩溃
+            try:
+                with socket.create_connection(("127.0.0.1", int(port)), timeout=0.3):
+                    time.sleep(0.3)
+                    if p.poll() is None:
+                        return port
+                    return None  # 进程崩了
+            except OSError:
+                time.sleep(0.1)
+        return None  # 超时
+    else:
+        # 无端口的应用：启动进程，等待 0.5s 确认进程存活
+        p = subprocess.Popen(app["cmd"], **_popen_kwargs())
+        procs[aid] = p
+        time.sleep(0.5)
+        if p.poll() is None:
+            return True  # 进程存活，返回 True 表示启动成功（无端口）
+        return None  # 进程已崩溃
 
 
 def get_port(aid):

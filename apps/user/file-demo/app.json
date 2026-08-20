@@ -4,16 +4,9 @@
   "icon": "📄",
   "color": "#f39c12",
   "version": "1.0.1",
-  "changelog": "验证 ready_check=file：靠应用主动写 ready 文件判定就绪（ROS2 lifecycle 模式）。",
+  "changelog": "验证无端口应用：靠应用主动写 ready 文件判定就绪（ROS2 lifecycle 模式）。",
   "cmd": ["apps/user/file-demo/app.py"],
   "dock": false,
   "system": false,
-  "group": "user",
-  "ready_check": {
-    "type": "file",
-    "file": "apps/user/file-demo/var/ready",
-    "timeout": 5
-  },
-  "stop_signal": "SIGTERM",
-  "stop_timeout": 2
+  "group": "user"
 }

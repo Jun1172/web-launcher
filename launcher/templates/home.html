@@ -99,16 +99,16 @@ body {
 #pager { flex:1; overflow:hidden; display:flex; flex-direction:column; justify-content:center; }
 #screens { display:flex; height:100%; transition:transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
 
-/* 🌟 核心布局优化：超大间距响应式网格 */
+/* 核心布局：响应式网格 */
 .screen {
-    flex:0 0 100%; 
-    display:grid; 
+    flex:0 0 100%;
+    display:grid;
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-    gap:60px 32px; 
-    align-content: center; 
+    gap:24px 24px;
+    align-content: center;
     justify-items: center;
-    max-width: 1000px; 
-    margin: 0 auto; 
+    max-width: 1000px;
+    margin: 0 auto;
     padding: 0 40px;
 }
 
@@ -411,7 +411,6 @@ body {
 
 <script>
 const LAUNCHER_VER = '__VERSION__';
-const PAGE=16;
 let APPS=[],pageIdx=0,screenCount=0,current=null,recentsOpen=false,suppress=false;
 const pages={},openedOrder=[];
 const $=id=>document.getElementById(id);
@@ -455,19 +454,27 @@ if(navigator.getBattery)navigator.getBattery().then(b=>{
 /* ─ 桌面构建 ── */
 function buildHome(){
   const homeApps=APPS.filter(a=>!a.dock);
-  const cols = Math.max(4, Math.floor(($('screens').clientWidth - 80) / 142)); 
-  const itemsPerPage = cols * 3;
+  const pager=$('pager');
+  // 可用宽度：pager 宽度减去左右 padding（screen 有 40px*2=80px padding）
+  const availW = Math.max(120, pager.clientWidth - 80);
+  // 每列宽度：110px(icon) + 24px(gap) = 134px，向下取整
+  const cols = Math.max(3, Math.floor(availW / 134));
+  // 可用高度：pager 高度减去上下间距余量
+  // 每行高度：84px(tile) + 14px(gap) + ~20px(name) + 24px(row gap) ≈ 142px
+  const availH = Math.max(120, pager.clientHeight - 40);
+  const rows = Math.max(2, Math.floor(availH / 142));
+  const itemsPerPage = cols * rows;
   screenCount=Math.max(1,Math.ceil(homeApps.length/itemsPerPage));
-  
+
   const sc=$('screens');sc.innerHTML='';
   for(let s=0;s<screenCount;s++){
     const d=document.createElement('div');d.className='screen';
     homeApps.slice(s*itemsPerPage,(s+1)*itemsPerPage).forEach(a=>d.appendChild(iconEl(a)));
     sc.appendChild(d);}
-    
+
   const dk=$('dock');dk.innerHTML='';
   APPS.filter(a=>a.dock).forEach(a=>dk.appendChild(iconEl(a)));
-  
+
   const dots=$('dots');dots.innerHTML='';
   for(let i=0;i<screenCount;i++)dots.appendChild(document.createElement('i'));
   gotoPage(0);updateDots();}
@@ -484,8 +491,7 @@ function gotoPage(i){
   [...$('dots').children].forEach((d,j)=>d.classList.toggle('on',j===pageIdx));}
   
 addEventListener('resize',()=>{
-  gotoPage(pageIdx);
-  buildHome(); 
+  buildHome();
 });
 
 function updateDots(){

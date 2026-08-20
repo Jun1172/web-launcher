@@ -9,15 +9,5 @@
   "cmd": ["apps/user/system-monitor/app.py"],
   "dock": false,
   "system": false,
-  "group": "user",
-  "ready_check": {
-    "type": "http",
-    "timeout": 5
-  },
-  "restart_policy": {
-    "on": "failure",
-    "max_retries": 3,
-    "delay": 2
-  },
-  "stop_timeout": 3
+  "group": "user"
 }

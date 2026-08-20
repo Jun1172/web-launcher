@@ -1,5 +1,5 @@
 // cpp-hello —— 跨平台 C++ HTTP server demo
-// 监听 8140，每个连接返回固定 HTML 页面
+// 读取 LAUNCHER_APP_PORT 环境变量获取端口（由 launcher 分配），默认 8124
 // 用最朴素的 socket API，不依赖任何第三方库（验证 C++ 应用部署链路）
 //
 // 编译：
@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <cstring>
+#include <cstdlib>
 #include <thread>
 #include <vector>
 #include <atomic>
@@ -22,15 +23,25 @@
 #  include <ws2tcpip.h>
 #  pragma comment(lib, "ws2_32.lib")
    typedef int socklen_t;
+#  define SHUT_SEND SD_SEND
 #else
 #  include <sys/socket.h>
 #  include <netinet/in.h>
 #  include <unistd.h>
 #  include <arpa/inet.h>
+#  include <sys/time.h>
 #  define closesocket(s) close(s)
+#  define SHUT_SEND SHUT_WR
 #endif
 
-static const int PORT = 8140;
+static int get_port() {
+    const char* env = std::getenv("LAUNCHER_APP_PORT");
+    if (env && *env) {
+        int p = std::atoi(env);
+        if (p > 0) return p;
+    }
+    return 8124;
+}
 static std::atomic<int> g_req_count{0};
 static std::atomic<bool> g_running{true};
 
@@ -57,6 +68,27 @@ font-family:monospace;font-size:12px}
 }
 
 static void handle_client(int client) {
+    // 设置接收超时（1秒），避免 recv 永久阻塞
+#ifdef _WIN32
+    DWORD rcvtime = 1000;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, (const char*)&rcvtime, sizeof(rcvtime));
+#else
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
+
+    // 循环读取请求直到看到 \r\n\r\n（HTTP 请求头结束）或超时
+    char buf[8192];
+    std::string req;
+    while (true) {
+        int n = recv(client, buf, sizeof(buf), 0);
+        if (n <= 0) break;
+        req.append(buf, n);
+        if (req.find("\r\n\r\n") != std::string::npos) break;
+    }
+
     std::string body = html_page();
     std::string resp =
         "HTTP/1.1 200 OK\r\n"
@@ -66,6 +98,14 @@ static void handle_client(int client) {
         "Cache-Control: no-store\r\n"
         "\r\n" + body;
     send(client, resp.c_str(), (int)resp.size(), 0);
+
+    // 优雅关闭：先关闭发送端（FIN），再等待对方关闭，最后 closesocket
+    // 这样接收缓冲区不会残留未读数据，避免 Windows 发送 RST
+    shutdown(client, SHUT_SEND);
+    while (true) {
+        int n = recv(client, buf, sizeof(buf), 0);
+        if (n <= 0) break;
+    }
     closesocket(client);
     g_req_count++;
 }
@@ -78,6 +118,8 @@ int main() {
         return 1;
     }
 #endif
+
+    int port = get_port();
 
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) {
@@ -92,10 +134,10 @@ int main() {
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(PORT);
+    addr.sin_port = htons(port);
 
     if (bind(srv, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        std::cerr << "bind() failed on port " << PORT << std::endl;
+        std::cerr << "bind() failed on port " << port << std::endl;
         closesocket(srv);
         return 1;
     }
@@ -106,7 +148,7 @@ int main() {
         return 1;
     }
 
-    std::cout << "[cpp-hello] listening on http://127.0.0.1:" << PORT << std::endl;
+    std::cout << "[cpp-hello] listening on http://127.0.0.1:" << port << std::endl;
 
     while (g_running) {
         sockaddr_in cli{};

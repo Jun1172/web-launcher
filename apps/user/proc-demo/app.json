@@ -4,20 +4,9 @@
   "icon": "⚙️",
   "color": "#2ecc71",
   "version": "1.0.0",
-  "changelog": "验证 ready_check=process：无端口、靠进程存活判定；测试 always 重启 + 优雅停止。",
+  "changelog": "验证无端口应用：靠进程存活判定就绪。",
   "cmd": ["apps/user/proc-demo/app.py"],
   "dock": false,
   "system": false,
-  "group": "user",
-  "ready_check": {
-    "type": "process",
-    "timeout": 2
-  },
-  "restart_policy": {
-    "on": "always",
-    "max_retries": 5,
-    "delay": 1
-  },
-  "stop_signal": "SIGTERM",
-  "stop_timeout": 3
+  "group": "user"
 }

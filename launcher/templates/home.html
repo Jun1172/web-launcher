@@ -99,17 +99,17 @@ body {
 #pager { flex:1; overflow:hidden; display:flex; flex-direction:column; justify-content:center; }
 #screens { display:flex; height:100%; transition:transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
 
-/* 核心布局：响应式网格 */
+/* 核心布局：响应式网格（列数由 JS 统一计算后以 inline style 应用，
+   确保分页容量与实际渲染列数严格一致，避免拉伸窗口时两页混排） */
 .screen {
     flex:0 0 100%;
     display:grid;
-    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-    gap:24px 24px;
+    grid-template-columns: repeat(6, 1fr);
+    gap:24px;
     align-content: center;
     justify-items: center;
-    max-width: 1000px;
-    margin: 0 auto;
     padding: 0 40px;
+    overflow: hidden;
 }
 
 .icon { display:flex; flex-direction:column; align-items:center; gap:14px; cursor:pointer; position:relative; width:110px; }
@@ -451,24 +451,25 @@ if(navigator.getBattery)navigator.getBattery().then(b=>{
     $('battPct').textContent=Math.round(b.level*100)+'%'+(b.charging?' ⚡':'');};
   up();b.addEventListener('levelchange',up);b.addEventListener('chargingchange',up);});
 
-/* ─ 桌面构建 ── */
+/* ─ 桌面构建 ──
+   列数/行数只在此处计算，再 inline 应用到每个 .screen 的
+   grid-template-columns —— 与 CSS 的 padding/gap/最小列宽用同一套参数，
+   保证每页图标容量 = 实际能排下的容量，窗口拉伸时不会错页混排。 */
+const GRID={PAD_X:40, GAP:24, COL_MIN:110, ROW_H:118}; // ROW_H: tile 84 + gap 14 + name ~20
 function buildHome(){
   const homeApps=APPS.filter(a=>!a.dock);
   const pager=$('pager');
-  // 可用宽度：pager 宽度减去左右 padding（screen 有 40px*2=80px padding）
-  const availW = Math.max(120, pager.clientWidth - 80);
-  // 每列宽度：110px(icon) + 24px(gap) = 134px，向下取整
-  const cols = Math.max(3, Math.floor(availW / 134));
-  // 可用高度：pager 高度减去上下间距余量
-  // 每行高度：84px(tile) + 14px(gap) + ~20px(name) + 24px(row gap) ≈ 142px
-  const availH = Math.max(120, pager.clientHeight - 40);
-  const rows = Math.max(2, Math.floor(availH / 142));
-  const itemsPerPage = cols * rows;
+  const availW=Math.max(GRID.COL_MIN, pager.clientWidth-GRID.PAD_X*2);
+  const cols=Math.max(1, Math.floor((availW+GRID.GAP)/(GRID.COL_MIN+GRID.GAP)));
+  const availH=Math.max(GRID.ROW_H, pager.clientHeight);
+  const rows=Math.max(1, Math.floor((availH+GRID.GAP)/(GRID.ROW_H+GRID.GAP)));
+  const itemsPerPage=Math.max(1, cols*rows);
   screenCount=Math.max(1,Math.ceil(homeApps.length/itemsPerPage));
 
   const sc=$('screens');sc.innerHTML='';
   for(let s=0;s<screenCount;s++){
     const d=document.createElement('div');d.className='screen';
+    d.style.gridTemplateColumns='repeat('+cols+',1fr)';
     homeApps.slice(s*itemsPerPage,(s+1)*itemsPerPage).forEach(a=>d.appendChild(iconEl(a)));
     sc.appendChild(d);}
 

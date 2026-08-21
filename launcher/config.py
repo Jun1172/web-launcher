@@ -8,10 +8,12 @@
 
 不依赖 launcher 其它模块，避免循环导入。
 """
-import sys  # 👈 新增导入
+import sys
 import json
 import ssl
 import re
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 # 👇 【核心修改】兼容 PyInstaller 打包态与开发态
@@ -26,6 +28,55 @@ CONFIG_JSON = BASE / "config.json"
 APPS_DIR = BASE / "apps"
 
 
+# ── 日志系统（按大小轮转，不按时间轮转）──
+# launcher.log：结构化日志，5MB 轮转，保留 3 个备份
+# 开发模式同时输出到控制台；打包模式只写文件
+def _init_logging():
+    log_file = BASE / "launcher.log"
+    handler = RotatingFileHandler(
+        log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    ))
+    logger = logging.getLogger("launcher")
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    logger.propagate = False  # 避免重复输出到 root logger
+    if not getattr(sys, "frozen", False):
+        # 开发模式：同时输出到控制台
+        console = logging.StreamHandler()
+        console.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
+        ))
+        console.setLevel(logging.INFO)
+        logger.addHandler(console)
+    return logger
+
+
+_logger = _init_logging()
+
+_LEVEL_PREFIXES = (
+    ("[DBG]", logging.DEBUG),
+    ("[WARN]", logging.WARNING),
+    ("[ERR]", logging.ERROR),
+)
+
+
+def safe_print(msg):
+    """统一日志输出：根据消息前缀自动分级，写入轮转日志文件 launcher.log。
+
+    前缀规则：[DBG]→DEBUG, [WARN]→WARNING, [ERR]→ERROR, 其他→INFO。
+    各模块统一用此函数，替代裸 print，避免 -w 模式 stdout 崩溃。
+    """
+    level = logging.INFO
+    for prefix, lvl in _LEVEL_PREFIXES:
+        if msg.startswith(prefix):
+            level = lvl
+            break
+    _logger.log(level, msg)
+
+
 def load_config():
     """从 CONFIG_JSON 读取 dict；不存在返回 {}。每次调用都会重新读磁盘。"""
     if CONFIG_JSON.exists():
@@ -34,17 +85,6 @@ def load_config():
         except (json.JSONDecodeError, OSError):
             return {}
     return {}
-
-
-def safe_print(msg):
-    """安全 print：处理 PyInstaller -w 模式下 stdout=None / GBK 编码无法输出 emoji。
-
-    各模块统一用此函数，避免重复定义 _safe_print。
-    """
-    try:
-        print(msg)
-    except (UnicodeEncodeError, AttributeError, ValueError):
-        pass
 
 
 # ── 全局配置变量（reload_config 会重新赋值这些变量）──

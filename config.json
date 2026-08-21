@@ -12,6 +12,10 @@
     "auth": null,
     "verify_ssl": false
   },
+  "gitee": {
+    "repo": "jun626/web-launcher",
+    "release_asset": "launcher.exe"
+  },
   "publish": {
     "server": "ubuntu@1.15.30.237",
     "remote_path": "/var/www/repo",

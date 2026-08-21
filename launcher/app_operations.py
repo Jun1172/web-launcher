@@ -8,6 +8,7 @@ do_launcher_update():         下载远端 launcher zip → 校验 → bak → �
 """
 import json
 import shutil
+import urllib.request
 import zipfile 
 from pathlib import Path
 from . import config
@@ -129,7 +130,7 @@ def do_uninstall(aid):
 
 # ━━━━━━━━━━━━━━━━━━━━━ Launcher 版本信息 ━━━━━━━━━━━━━━━━━━━━━
 def get_launcher_version_info():
-    """读取本地 config 与远端 index.json['launcher'] 对比。"""
+    """读取 Launcher 版本；exe 模式查 Gitee Release，源码模式查 repo index。"""
     out = {
         "local": config.LAUNCHER_VERSION,
         "remote": None,
@@ -140,6 +141,22 @@ def get_launcher_version_info():
         "released_remote": "",
         "error": None,
     }
+    if getattr(__import__("sys"), "frozen", False):
+        try:
+            release = _gitee_latest_release()
+            remote_ver = release["version"]
+            out.update({
+                "remote": remote_ver,
+                "changelog_remote": release["changelog"],
+                "released_remote": release["released"],
+                "source": "gitee-release",
+                "asset": release["asset_name"],
+            })
+            out["upgradable"] = vt(remote_ver) > vt(config.LAUNCHER_VERSION)
+        except Exception as e:
+            out["error"] = str(e)
+        return out
+
     try:
         idx = repo_index()
     except Exception as e:
@@ -156,6 +173,36 @@ def get_launcher_version_info():
         out["upgradable"] = True
     return out
 
+
+def _gitee_latest_release():
+    """读取 Gitee 最新 Release，并选择配置的 exe 附件。"""
+    cfg = config.GITEE_CFG or {}
+    repo = str(cfg.get("repo", "")).strip().strip("/")
+    if not repo or "/" not in repo:
+        raise ValueError("Gitee 仓库未配置，请填写 owner/repository")
+    api_url = f"https://gitee.com/api/v5/repos/{repo}/releases/latest"
+    req = urllib.request.Request(api_url, headers={"User-Agent": "WebLauncher"})
+    with urllib.request.urlopen(req, timeout=15) as response:
+        release = json.loads(response.read().decode("utf-8"))
+    tag = str(release.get("tag_name") or "").strip()
+    version = tag.lstrip("vV")
+    if not version:
+        raise ValueError("Gitee 最新 Release 缺少 tag_name")
+    assets = release.get("assets") or []
+    wanted = cfg.get("release_asset", "launcher.exe")
+    asset = next((a for a in assets if a.get("name") == wanted), None)
+    if asset is None:
+        asset = next((a for a in assets if str(a.get("name", "")).lower().endswith(".exe")), None)
+    if not asset or not asset.get("browser_download_url"):
+        raise ValueError("Gitee 最新 Release 没有可下载的 exe 附件")
+    return {
+        "version": version,
+        "changelog": release.get("body") or release.get("name") or "",
+        "released": release.get("created_at") or "",
+        "asset_name": asset.get("name"),
+        "asset_url": asset["browser_download_url"],
+    }
+
 def _atomic_overwrite_file(src_bytes: bytes, target: Path):
     """直接覆盖 target 文件（不保留 .bak）。"""
     tmp = target.with_suffix(target.suffix + ".tmp.new")
@@ -171,6 +218,13 @@ def do_launcher_update():
     开发态走 _update_dev（zip 覆盖源码 + 合并 config + reload）。
     """
     import sys
+    import sys
+    if getattr(sys, "frozen", False):
+        try:
+            return _update_frozen_release(_gitee_latest_release())
+        except Exception as e:
+            return False, f"Gitee Release 更新失败: {e}", False
+
     try:
         idx = repo_index()
     except Exception as e:
@@ -208,6 +262,26 @@ def _update_frozen(meta):
     ok, msg = updater.launch_self_update(new_exe)
     if ok:
         return True, "更新已下载，程序将自动重启", True
+    return False, msg, False
+
+
+def _update_frozen_release(release):
+    """从 Gitee Release 下载 launcher.exe，并安排替换重启。"""
+    import hashlib
+    try:
+        req = urllib.request.Request(release["asset_url"], headers={"User-Agent": "WebLauncher"})
+        with urllib.request.urlopen(req, timeout=60) as response:
+            data = response.read()
+    except Exception as e:
+        return False, f"下载 Gitee Release 失败: {e}", False
+    if not data.startswith(b"MZ"):
+        return False, "下载的 Release 附件不是有效的 Windows exe", False
+    new_exe = Path(__import__("sys").executable).parent / "launcher.new"
+    new_exe.write_bytes(data)
+    from . import updater
+    ok, msg = updater.launch_self_update(new_exe)
+    if ok:
+        return True, f"已下载 Gitee Release v{release['version']}，程序将自动重启", True
     return False, msg, False
 
 

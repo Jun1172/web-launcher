@@ -23,7 +23,7 @@ if errorlevel 1 (
     echo [ERROR] PyInstaller 打包失败。
     exit /b 1
 )
-if not exist ".\dist\config.json" copy /Y ".\config.json" ".\dist\config.json" >nul
+copy /Y ".\config.json" ".\dist\config.json" >nul
 if not exist ".\dist\config.json" (
     echo [ERROR] 无法复制 config.json 到 dist 目录。
     exit /b 1

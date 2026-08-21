@@ -404,9 +404,9 @@ function showToast(msg){
   setTimeout(()=>{ d.style.transition='opacity 0.2s'; d.style.opacity='0'; setTimeout(()=>d.remove(), 200); }, 2500);
 }
 
-function renderStatic(){
+function renderStatic(launcherVersion = STATIC.launcher_version, launcherReleased = STATIC.launcher_released){
   const rows = [
-    ['Launcher 版本', STATIC.launcher_version + (STATIC.launcher_released ? ' · ' + STATIC.launcher_released : '')],
+    ['Launcher 版本', launcherVersion + (launcherReleased ? ' · ' + launcherReleased : '')],
     ['Python 版本', STATIC.python_version],
     ['操作系统', STATIC.os + ' (' + STATIC.os_machine + ')'],
     ['主机名', STATIC.hostname],
@@ -462,11 +462,12 @@ function renderApps(apps){
 let UPD = null;
 function renderLauncherUpdate(d){
   UPD = d || null;
-  const local = STATIC.launcher_version;
+  const local = d?.local || STATIC.launcher_version;
   const remote = d?.remote || '—';
   const releasedR = d?.released_remote || '—';
   const upgradable = !!(d && d.upgradable);
   const err = d?.error;
+  renderStatic(local, d?.released_local || STATIC.launcher_released);
 
   document.getElementById('updGrid').innerHTML = `
     <div class="upd-cell">
@@ -512,6 +513,11 @@ async function checkLauncher(){
     const r = await fetch(LAUNCHER_URL + '/api/launcher/version');
     const d = await r.json();
     renderLauncherUpdate(d);
+    if(d.local){
+      STATIC.launcher_version = d.local;
+      STATIC.launcher_released = d.released_local || STATIC.launcher_released;
+      renderStatic();
+    }
   } catch(e) {
     renderLauncherUpdate({ error: e.message });
   }

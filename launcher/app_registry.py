@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from .config import BASE, APPS_DIR, safe_print
+from .config import RESOURCE_BASE, APPS_DIR, safe_print
 
 # 模块级全局注册表（所有视图共享）
 system_apps = []
@@ -46,7 +46,7 @@ def resolve_cmd(meta):
     out = []
     for c in cmd:
         p = Path(c)
-        out.append(str(BASE / p) if not p.is_absolute() else str(p))
+        out.append(str(RESOURCE_BASE / p) if not p.is_absolute() else str(p))
     if out[0].lower().endswith((".py", ".pyw")):
         # 打包后 sys.executable 是 launcher.exe，用它跑 app.py 会弹新窗口（又跑一次 main）
         # 改用系统 python 命令；用户系统需装 Python 才能跑 .py app

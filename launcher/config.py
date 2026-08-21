@@ -16,16 +16,17 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# 👇 【核心修改】兼容 PyInstaller 打包态与开发态
-if getattr(sys, 'frozen', False):
-    # 打包后：BASE 指向 launcher.exe 所在的真实目录
+# 打包态下，BASE 用于日志、布局和更新等可写文件；资源则位于
+# PyInstaller onefile 解压出来的 sys._MEIPASS 临时目录。
+if getattr(sys, "frozen", False):
     BASE = Path(sys.executable).parent
+    RESOURCE_BASE = Path(getattr(sys, "_MEIPASS", BASE))
 else:
-    # 开发态：BASE 指向项目根目录 (launcher.py 所在目录)
     BASE = Path(__file__).resolve().parent.parent
+    RESOURCE_BASE = BASE
 
 CONFIG_JSON = BASE / "config.json"
-APPS_DIR = BASE / "apps"
+APPS_DIR = RESOURCE_BASE / "apps"
 
 
 # ── 日志系统（按大小轮转，不按时间轮转）──

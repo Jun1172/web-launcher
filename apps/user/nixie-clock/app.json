@@ -1,0 +1,13 @@
+{
+  "id": "nixie-clock",
+  "name": "拟物辉光管时钟",
+  "icon": "📺",
+  "color": "#f97316",
+  "version": "1.0.0",
+  "changelog": "时间、日期、秒表与颜色模式切换。",
+  "port": 8168,
+  "cmd": ["apps/general/nixie-clock/app.py"],
+  "dock": false,
+  "system": false,
+  "group": "general"
+}

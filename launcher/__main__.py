@@ -8,6 +8,7 @@ python -m launcher  或  python launcher.py 都会运行 main()。
 - 窗口关闭时清理所有子进程
 """
 import atexit
+import platform
 import socket
 import sys
 import threading
@@ -132,6 +133,7 @@ def main():
 
     # 6. 有 pywebview → 创建无边框桌面窗口
     url = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/"
+    is_windows = platform.system() == "Windows"
     window = webview.create_window(
         LAUNCHER_TITLE,
         url,
@@ -139,13 +141,15 @@ def main():
         height=768,
         resizable=True,
         text_select=True,
-        frameless=True,        # ← 去掉操作系统标题栏
-        easy_drag=True,        # ← 拖动窗口任意区域即可移动
+        frameless=is_windows,  # Windows: frameless; Linux: native titlebar
+        easy_drag=is_windows,  # only needed in frameless mode
         js_api=LauncherApi(),
     )
 
     # 7. 注入关闭按钮到状态栏（frameless 模式需要自给关闭入口）
     def _inject_close_button():
+        if not is_windows:
+            return
         try:
             window.evaluate_js("""
                 (function(){
@@ -154,24 +158,26 @@ def main():
                     var sbR=sb.querySelector('.sbR');
                     if(!sbR)return;
                     var grp=document.createElement('span');
-                    grp.style.cssText='display:flex;align-items:center;gap:2px;margin-left:8px;';
-                    function mkBtn(txt,title,color,fn){
+                    grp.style.cssText='display:flex;align-items:center;gap:2px;margin-left:12px;background:rgba(255,255,255,0.05);border-radius:8px;padding:2px;';
+                    function mkBtn(svg,title,fn){
                         var b=document.createElement('button');
-                        b.textContent=txt;b.title=title;
-                        b.style.cssText='background:transparent;border:0;color:'+color+
-                            ';font-size:14px;cursor:pointer;padding:4px 8px;border-radius:6px;'+
-                            'transition:all 0.2s;line-height:1;font-family:system-ui,sans-serif;';
-                        b.onmouseover=function(){b.style.background='rgba(255,255,255,0.1)';};
-                        b.onmouseout=function(){b.style.background='transparent';};
+                        b.title=title;
+                        b.style.cssText='background:transparent;border:0;cursor:pointer;padding:6px 8px;border-radius:6px;transition:all 0.15s;display:flex;align-items:center;color:var(--text-secondary);';
+                        b.innerHTML=svg;
+                        b.onmouseover=function(){b.style.background='rgba(255,255,255,0.1)';b.style.color='var(--text-primary)';};
+                        b.onmouseout=function(){b.style.background='transparent';b.style.color='var(--text-secondary)';};
                         b.onclick=fn;
                         return b;
                     }
-                    grp.appendChild(mkBtn('—','最小化','var(--text-primary)',
-                        function(){pywebview.api.minimize_window();}));
-                    grp.appendChild(mkBtn('▢','最大化/还原','var(--text-primary)',
-                        function(){pywebview.api.toggle_maximize();}));
-                    grp.appendChild(mkBtn('✕','关闭','#f87171',
-                        function(){pywebview.api.close_window();}));
+                    var minSvg='<svg width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="5.5" width="8" height="1.2" rx="0.6" fill="currentColor"/></svg>';
+                    var maxSvg='<svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+                    var closeSvg='<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3.5 3.5L8.5 8.5M8.5 3.5L3.5 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+                    grp.appendChild(mkBtn(minSvg,'最小化',function(){pywebview.api.minimize_window();}));
+                    grp.appendChild(mkBtn(maxSvg,'最大化/还原',function(){pywebview.api.toggle_maximize();}));
+                    var cb=mkBtn(closeSvg,'关闭',function(){pywebview.api.close_window();});
+                    cb.onmouseover=function(){cb.style.background='rgba(248,113,113,0.2)';cb.style.color='#f87171';};
+                    cb.onmouseout=function(){cb.style.background='transparent';cb.style.color='var(--text-secondary)';};
+                    grp.appendChild(cb);
                     sbR.appendChild(grp);
                 })();
             """)
@@ -179,7 +185,25 @@ def main():
             pass
 
     # 8. 启动 GUI 事件循环（阻塞，直到窗口关闭）
-    webview.start(func=_inject_close_button)
+    #    某些环境（无图形后端的 Linux/VM、缺 GTK/Qt 依赖）下 webview.start 会抛异常，
+    #    此处捕获后回退到纯 HTTP 模式，避免直接崩溃退出。
+    gui_ok = False
+    try:
+        webview.start(func=_inject_close_button)
+        gui_ok = True
+    except Exception as e:
+        _safe_print(f"[WARN] GUI 窗口启动失败: {e}")
+        _safe_print("[WARN] 回退到纯 HTTP 模式，请用浏览器访问:")
+        _safe_print(f"       http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+
+    if not gui_ok:
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            _safe_print("\n[STOP] 用户中断，正在关闭所有应用进程...")
+        server.shutdown()
+        terminate_all()
+        return
 
     # 9. 窗口关闭后清理
     _safe_print("[STOP] 窗口已关闭，正在清理所有应用进程...")

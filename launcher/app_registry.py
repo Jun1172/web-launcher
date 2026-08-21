@@ -35,7 +35,9 @@ def resolve_cmd(meta):
 
     规则：
     - 相对路径 → 相对 BASE 展开
-    - 后缀 .py / .pyw → 自动前缀 sys.executable（确保用同一个解释器）
+    - 后缀 .py / .pyw → 自动前缀 Python 解释器
+      开发态用 sys.executable（同一个 python.exe）；
+      打包态 sys.executable 是 launcher.exe（不能当解释器），改用系统 python
     - 没有 cmd 字段 → 返回 None（代表是纯占位 stub 应用，无独立进程）
     """
     cmd = meta.get("cmd")
@@ -46,7 +48,10 @@ def resolve_cmd(meta):
         p = Path(c)
         out.append(str(BASE / p) if not p.is_absolute() else str(p))
     if out[0].lower().endswith((".py", ".pyw")):
-        out = [sys.executable] + out
+        # 打包后 sys.executable 是 launcher.exe，用它跑 app.py 会弹新窗口（又跑一次 main）
+        # 改用系统 python 命令；用户系统需装 Python 才能跑 .py app
+        interpreter = "python" if getattr(sys, "frozen", False) else sys.executable
+        out = [interpreter] + out
     return out
 
 

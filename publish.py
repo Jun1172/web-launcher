@@ -19,14 +19,14 @@ import sys
 import zipfile
 from pathlib import Path
 
-if Path(__file__).name == "publish.py" and Path(__file__).parent.name == "apps":
-    # publish.py 在 apps/ 目录下
-    BASE = Path(__file__).parent.parent.resolve()
-else:
-    # publish.py 在根目录
-    BASE = Path(__file__).parent.resolve()
+BASE = Path(__file__).parent.resolve()
 CONFIG_JSON = BASE / "config.json"
 APPS_DIR = BASE / "apps"
+
+# 复用 launcher 包的公共逻辑，避免重复实现
+if str(BASE) not in sys.path:
+    sys.path.insert(0, str(BASE))
+from launcher.app_registry import _find_all_app_dirs, derive_group
 
 def load_config():
     if CONFIG_JSON.exists():
@@ -73,18 +73,6 @@ def _verify_upload(pkg_path):
         print(f"  ⚠ HTTP 验证失败 ({pkg_path}): {e}")
         return False
 
-def _find_all_app_dirs():
-    """递归扫描 APPS_DIR 下所有含 app.json 的目录，返回 [app_dir, ...] 列表。"""
-    dirs = []
-    if not APPS_DIR.exists():
-        return dirs
-    for app_json in sorted(APPS_DIR.rglob("app.json")):
-        d = app_json.parent
-        if d.name.endswith((".bak", ".tmp.new", ".zip.tmp")):
-            continue
-        dirs.append(d)
-    return dirs
-
 def discover_apps(kind="all"):
     """返回 [app_dir, ...] 列表
     kind: 'all' | 任意分组名 (如 'system', 'user', 'admin')
@@ -93,18 +81,14 @@ def discover_apps(kind="all"):
     all_dirs = _find_all_app_dirs()
     if kind == "all":
         return all_dirs
-    
+
     result = []
     for d in all_dirs:
         try:
             meta = json.loads((d / "app.json").read_text(encoding="utf-8"))
-            # 核心改动：读取 group 字段，兼容旧版 system 字段
-            app_group = meta.get("group")
-            if app_group is None:
-                app_group = "system" if meta.get("system") else "user"
+            app_group = derive_group(meta)
         except Exception:
             continue
-            
         if kind == app_group:
             result.append(d)
     return result
@@ -122,9 +106,7 @@ def print_apps_table(apps):
             meta = {"id": d.name, "name": f"⚠ app.json 损坏: {e}"}
         
         # 核心改动：显示 group 而不是 SYSTEM/USER
-        group = meta.get("group")
-        if group is None:
-            group = "system" if meta.get("system") else "user"
+        group = derive_group(meta)
             
         rel = d.relative_to(BASE).as_posix()
         rows.append((group.upper(), rel, meta.get("id", "?"), meta.get("version", "?"), meta.get("name", "?")))
@@ -156,10 +138,9 @@ def build_entry(meta, zip_path):
               "ready_check", "workdir", "stop_signal", "stop_timeout",
               "restart_policy", "requires", "released")
     entry = {k: meta[k] for k in FIELDS if k in meta}
-    
+
     # 兼容处理：如果旧配置没有 group，自动推断并写入
-    if "group" not in entry:
-        entry["group"] = "system" if meta.get("system") else "user"
+    entry.setdefault("group", derive_group(meta))
         
     entry["pkg"] = f"{PACKAGES_DIR}/{zip_path.name}"
     entry["size"] = zip_path.stat().st_size
@@ -193,7 +174,7 @@ def publish_one(app_dir, *, upload=True, index_override=None):
     zip_name = f"{meta['id']}-{meta['version']}.zip"
     
     # 核心改动：根据 group 决定图标
-    group = meta.get("group", "system" if meta.get("system") else "user")
+    group = derive_group(meta)
     kind_tag = "🛡️" if group == "system" else "📦"
     print(f"{kind_tag} 打包 {meta['name']} v{meta['version']} (id={meta['id']}, group={group})...")
 
@@ -287,7 +268,7 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
     """把 launcher 基础文件打包成 zip"""
     include_patterns = [
         "launcher.py", "config.json", "README.md",
-        "apps/publish.py", "apps/README.md",
+        "apps/README.md",
     ]
     
     launcher_pkg_dir = BASE / "launcher"
@@ -305,7 +286,7 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
         except Exception:
             continue
         
-        app_group = meta.get("group", "system" if meta.get("system") else "user")
+        app_group = derive_group(meta)
         if app_group != "system":
             continue
             

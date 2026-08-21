@@ -9,7 +9,6 @@
 app.json 的 dock 字段降级为"出厂默认值"，仅当 layout.json 未覆盖时使用。
 """
 import json
-from pathlib import Path
 
 from .config import BASE
 

@@ -11,12 +11,23 @@ import json
 import sys
 from pathlib import Path
 
-from .config import BASE, APPS_DIR
+from .config import BASE, APPS_DIR, safe_print
 
 # 模块级全局注册表（所有视图共享）
 system_apps = []
 user_apps = []
 REGISTRY = []
+
+
+def derive_group(meta):
+    """从 app.json 元数据推导分组：优先 group 字段，缺省时按 system 推导。
+
+    system=true → "system"；否则 → "user"。返回 str。
+    """
+    g = meta.get("group")
+    if g is not None:
+        return g
+    return "system" if meta.get("system") else "user"
 
 
 def resolve_cmd(meta):
@@ -59,7 +70,7 @@ def _scan_all_apps():
         try:
             meta = json.loads((d / "app.json").read_text(encoding="utf-8"))
         except (json.JSONDecodeError, KeyError) as e:
-            print(f"应用 {d.name} 加载失败: {e}")
+            safe_print(f"[WARN] 应用 {d.name} 加载失败: {e}")
             continue
         meta.setdefault("id", d.name)
         meta["system"] = bool(meta.get("system"))
@@ -105,7 +116,7 @@ def _mark_port_conflicts(apps):
         elif "port_conflict" in a:
             del a["port_conflict"]  # 清除上次标记，避免 reload 后残留
     if conflict_ids:
-        print(f"端口冲突: {conflict_ids}")
+        safe_print(f"[WARN] 端口冲突: {conflict_ids}")
 
 
 def reload_apps():

@@ -24,8 +24,6 @@ else:
 
 CONFIG_JSON = BASE / "config.json"
 APPS_DIR = BASE / "apps"
-SYSTEM_APPS_DIR = APPS_DIR / "system"
-USER_APPS_DIR = APPS_DIR / "user"
 
 
 def load_config():
@@ -36,6 +34,17 @@ def load_config():
         except (json.JSONDecodeError, OSError):
             return {}
     return {}
+
+
+def safe_print(msg):
+    """安全 print：处理 PyInstaller -w 模式下 stdout=None / GBK 编码无法输出 emoji。
+
+    各模块统一用此函数，避免重复定义 _safe_print。
+    """
+    try:
+        print(msg)
+    except (UnicodeEncodeError, AttributeError, ValueError):
+        pass
 
 
 # ── 全局配置变量（reload_config 会重新赋值这些变量）──

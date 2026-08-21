@@ -72,9 +72,9 @@
 │  Launcher (Python stdlib, http.server, port 8000)  │
 │  ─────────────────────────────────────────────────  │
 │  launcher.py            ← 薄壳入口                  │
-│  launcher/              ← 9 个功能模块              │
-│    ├ config.py          ← 配置加载/路径常量         │
-│    ├ app_registry.py    ← 应用扫描/注册表           │
+│  launcher/              ← 10 个功能模块             │
+│    ├ config.py          ← 配置加载/路径常量/工具函数 │
+│    ├ app_registry.py    ← 应用扫描/注册表/group推导  │
 │    ├ process_manager.py ← spawn/port_probe/close   │
 │    ├ app_operations.py  ← install/uninstall/回退    │
 │    ├ repo.py            ← 仓库索引/HTTP 客户端      │
@@ -82,7 +82,6 @@
 │    ├ frontend.py        ← 首页 HTML 渲染             │
 │    ├ layout.py          ← 用户布局覆盖（layout.json）│
 │    └ updater.py         ← 二进制 OTA 替换脚本       │
-│  launcher_updater.py    ← 独立更新工具（外部触发） │
 │  publish.py             ← 发布到仓库                │
 │  ─────────────────────────────────────────────────  │
 │  • 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务面板）  │
@@ -141,7 +140,7 @@ python launcher.py
 | `changelog` | string | ❌ | — | 版本说明 |
 | `released` | string | ❌ | — | 发布时间（ISO 8601） |
 | `dock` | bool | ❌ | false | 是否常驻底部 Dock（出厂默认；用户可用 layout.json 覆盖） |
-| `system` | bool | ❌ | false | 是否系统应用（一般不手填，按目录自动推导） |
+| `system` | bool | ❌ | false | 是否系统应用（按此字段判断，目录结构 system/user 仅用于物理组织） |
 | `group` | string | ❌ | 推导 | 自定义分组（如 `"business"`、`"admin"`）；缺省时按 `system` 推导 |
 | `requires` | object | ❌ | `{}` | 依赖声明（**当前未校验，仅作文档**，见路线图） |
 
@@ -240,22 +239,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 
 客户端在状态栏右上角 ⚙️ `v1.0.2` 胶囊可见，有新版本时红点闪烁，点击「立即更新」即可 OTA。
 
-### 独立更新工具（外部触发，可选）
-
-当 launcher 进程已退出或无法通过 UI 触发更新时，可用 `launcher_updater.py` 独立检查 / 更新：
-
-```bash
-# 检查版本
-python launcher_updater.py check --base .
-
-# 更新（自动通知 launcher 优雅退出 → 替换 → 重启）
-python launcher_updater.py update --base . --stop --restart
-
-# 强制更新（不通知，强杀占用端口的进程，慎用）
-python launcher_updater.py update --base . --force --stop --restart
-```
-
-> 注：当前 `launcher_updater.py` 仅完整支持源码模式更新；编译模式（PyInstaller）的 `update_binary()` 是 TODO，见路线图。
+> 注：外部独立更新工具（`launcher_updater.py`）尚未实现，当前仅支持通过 UI 触发 OTA；见路线图。
 
 ### 仓库结构（远端）
 
@@ -330,19 +314,11 @@ python launcher_updater.py update --base . --force --stop --restart
     "server": "ubuntu@1.15.30.237",
     "remote_path": "/var/www/repo",
     "packages_dir": "packages"
-  },
-  "system_apps": ["store", "todo", "clock", "settings", "sysinfo"],
-  "ports": {
-    "store": 8100,
-    "todo": 8101,
-    "clock": 8102,
-    "sysinfo": 8103,
-    "settings": 8104
   }
 }
 ```
 
-`publish` / `system_apps` 字段仅供本地开发用，**不进 launcher 自更新包**（脱敏处理）。
+`publish` 字段仅供本地开发用，**不进 launcher 自更新包**（脱敏处理）。
 
 ## 🌐 部署到嵌入式主板
 
@@ -367,12 +343,11 @@ python launcher_updater.py update --base . --force --stop --restart
 ```
 web-launcher/
 ├── launcher.py              # 薄壳入口（import launcher.__main__.main）
-├── launcher_updater.py      # 独立更新工具（外部触发 check/update）
 ├── publish.py                # 发布工具（应用 + launcher 自更新）
-├── config.json              # 配置（host/port/repo/ports/system_apps）
+├── config.json              # 配置（host/port/repo/publish）
 ├── layout.json              # 用户布局覆盖（dock/hidden；首次保存后生成）
 ├── README.md                # 本文档
-├── launcher/                # 实现包（9 个功能模块）
+├── launcher/                # 实现包（10 个功能模块）
 │   ├── __init__.py
 │   ├── __main__.py          # 主入口（HTTP server + atexit 回收）
 │   ├── config.py            # 配置加载 / 路径常量
@@ -436,7 +411,7 @@ web-launcher/
 - [ ] **stop_signal / stop_timeout 可配**—— 当前硬编码 terminate + 2s
 - [ ] **workdir / env 透传**—— 当前 Popen 不传
 - [ ] **status 多状态字段**（starting/restarting/crashed/stopped）—— 当前只有 running: bool
-- [ ] **launcher_updater.py 编译模式**（update_binary）—— 当前仅源码模式完整
+- [ ] **独立更新工具 launcher_updater.py**（外部触发的 check/update，当前未实现）
 - [ ] **publish.py --binary** 多平台打包
 - [ ] 应用间 IPC 总线（发现 + 调用）
 - [ ] 应用资源限制（CPU / 内存配额）

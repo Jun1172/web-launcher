@@ -10,10 +10,8 @@
 """
 
 import os
-import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 
@@ -32,37 +30,19 @@ def get_current_exe() -> Path:
     return Path(sys.argv[0]).resolve()
 
 
-def download_binary(url: str, dest: Path, timeout: int = 60) -> tuple[bool, str]:
-    """从 url 下载二进制到 dest。"""
-    import urllib.request
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            dest.write_bytes(r.read())
-        return True, f"downloaded {dest} ({dest.stat().st_size} bytes)"
-    except Exception as e:
-        return False, f"download failed: {e}"
+def launch_self_update(new_exe: Path):
+    """安排后台脚本替换当前 exe 并重启。new_exe 为已下载好的新二进制路径。
 
-
-def launch_self_update(binary_url: str) -> tuple[bool, str]:
-    """下载新 launcher 二进制并安排替换。返回 (ok, msg)。
-
-    流程：
-    1. 下载新二进制到 launcher.new
-    2. 生成 updater 脚本（Windows: .bat，Linux: .sh）
-    3. 后台 spawn 脚本，脚本将等待当前进程退出后执行替换和重启
-    4. 调用方应在返回 True 后尽快退出
+    调用方应先下载好 launcher.new 再调用本函数（避免重复下载）。
+    返回 (ok, msg)。
     """
     exe_dir = get_exe_dir()
     current_exe = get_current_exe()
-    new_exe = exe_dir / "launcher.new"
 
-    # 1. 下载新二进制
-    ok, msg = download_binary(binary_url, new_exe)
-    if not ok:
-        return False, msg
+    if not new_exe.exists():
+        return False, f"新二进制不存在: {new_exe}"
 
-    # 2. 生成 updater 脚本
+    # 生成 updater 脚本
     is_windows = os.name == "nt"
     if is_windows:
         script_path = _write_windows_updater(current_exe, new_exe)

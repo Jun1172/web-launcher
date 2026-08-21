@@ -11,10 +11,8 @@ import shutil
 import zipfile 
 from pathlib import Path
 from . import config
-from .config import (
-    BASE, CONFIG_JSON, APPS_DIR, SYSTEM_APPS_DIR, USER_APPS_DIR, vt,
-)
-from .app_registry import reload_apps
+from .config import BASE, APPS_DIR, vt
+from .app_registry import reload_apps, derive_group
 from .process_manager import close_app
 from .repo import repo_get, repo_index, atomic_extract_zip
 
@@ -42,13 +40,8 @@ def _resolve_pkg_meta(aid, version=None):
     target_pkg = match.get("pkg")
     target_sha = match.get("sha256")
     target_ver = match.get("version", "0.0.1")
-    
-    # 核心改动：获取 group，兼容旧版 system 字段
-    app_group = match.get("group")
-    if app_group is None:
-        app_group = "system" if match.get("system") else "user"
-        
-    is_protected = app_group in PROTECTED_GROUPS
+
+    app_group = derive_group(match)
 
     if version is not None:
         if version != match.get("version"):
@@ -67,8 +60,7 @@ def _resolve_pkg_meta(aid, version=None):
         "pkg": target_pkg,
         "sha256": target_sha,
         "version": target_ver,
-        "group": app_group,         # <--- 传递 group 字符串
-        "is_protected": is_protected # <--- 传递保护状态
+        "group": app_group,
     }
     return True, meta, "ok"
 
@@ -122,11 +114,9 @@ def do_uninstall(aid):
     # 核心改动：读取本地 app.json 判断是否受保护
     try:
         local_meta = json.loads((app_dir / "app.json").read_text(encoding="utf-8"))
-        local_group = local_meta.get("group")
-        if local_group is None:
-            local_group = "system" if local_meta.get("system") else "user"
+        local_group = derive_group(local_meta)
     except Exception:
-        local_group = "user" # 读取失败默认放行
+        local_group = "user"  # 读取失败默认放行
 
     if local_group in PROTECTED_GROUPS:
         return False, f"[{local_group}] 分组应用不可卸载"
@@ -175,9 +165,12 @@ def _atomic_overwrite_file(src_bytes: bytes, target: Path):
     shutil.move(str(tmp), str(target))
 
 def do_launcher_update():
-    """下载远端 launcher 更新 → 校验 → 执行。"""
+    """下载远端 launcher 更新 → 校验 → 执行。
+
+    编译态（PyInstaller）走 _update_frozen（二进制替换 + 重启）；
+    开发态走 _update_dev（zip 覆盖源码 + 合并 config + reload）。
+    """
     import sys
-    is_frozen = getattr(sys, "frozen", False)
     try:
         idx = repo_index()
     except Exception as e:
@@ -187,35 +180,40 @@ def do_launcher_update():
     if not meta:
         return False, "远端无 launcher 发布", False
 
-    # ── 编译态：下载 binary ──
-    if is_frozen:
-        binary_pkg = meta.get("binary") or meta.get("pkg")
-        if not binary_pkg:
-            return False, "远端无 launcher 二进制包", False
-        sha = meta.get("sha256")
-        try:
-            data = repo_get(binary_pkg).read()
-        except Exception as e:
-            return False, f"下载失败: {e}", False
-            
-        if sha:
-            import hashlib
-            if hashlib.sha256(data).hexdigest() != sha:
-                return False, "sha256 校验失败", False
+    if getattr(sys, "frozen", False):
+        return _update_frozen(meta)
+    return _update_dev(meta)
 
-        exe_dir = Path(sys.executable).parent
-        new_exe = exe_dir / "launcher.new"
-        new_exe.write_bytes(data)
 
-        from . import updater
-        ok, msg = updater.launch_self_update(
-            f"{config.REPO_URL.rstrip('/')}/{binary_pkg}"
-        )
-        if ok:
-            return True, "更新已下载，程序将自动重启", True
-        return False, msg, False
+def _update_frozen(meta):
+    """编译态：下载二进制 → 校验 → 安排替换重启。"""
+    import hashlib
+    binary_pkg = meta.get("binary") or meta.get("pkg")
+    if not binary_pkg:
+        return False, "远端无 launcher 二进制包", False
+    sha = meta.get("sha256")
+    try:
+        data = repo_get(binary_pkg).read()
+    except Exception as e:
+        return False, f"下载失败: {e}", False
 
-    # ── 开发态：下载 zip ──
+    if sha and hashlib.sha256(data).hexdigest() != sha:
+        return False, "sha256 校验失败", False
+
+    import sys
+    new_exe = Path(sys.executable).parent / "launcher.new"
+    new_exe.write_bytes(data)
+
+    from . import updater
+    ok, msg = updater.launch_self_update(new_exe)
+    if ok:
+        return True, "更新已下载，程序将自动重启", True
+    return False, msg, False
+
+
+def _update_dev(meta):
+    """开发态：下载 zip → 校验 → 覆盖源码 → 合并 config → reload。"""
+    import hashlib
     pkg = meta.get("pkg")
     if not pkg:
         return False, "远端无 launcher zip 包", False
@@ -225,7 +223,6 @@ def do_launcher_update():
     except Exception as e:
         return False, f"下载失败: {e}", False
 
-    import hashlib
     if sha and hashlib.sha256(data).hexdigest() != sha:
         return False, "launcher 包 sha256 校验失败", False
 
@@ -235,7 +232,7 @@ def do_launcher_update():
     tmp_root.mkdir()
     zip_tmp = tmp_root / "pkg.zip"
     zip_tmp.write_bytes(data)
-    
+
     try:
         with zipfile.ZipFile(zip_tmp) as z:
             bad = [n for n in z.namelist() if n.startswith("/") or ".." in n]
@@ -244,9 +241,10 @@ def do_launcher_update():
             z.extractall(tmp_root / "unzipped")
     except Exception as e:
         return False, f"launcher 解压失败: {e}", False
-        
+
     unzipped = tmp_root / "unzipped"
 
+    # 覆盖 launcher.py
     lp = unzipped / "launcher.py"
     if lp.exists():
         try:
@@ -254,6 +252,7 @@ def do_launcher_update():
         except Exception as e:
             return False, f"覆盖 launcher.py 失败: {e}", False
 
+    # 覆盖 launcher/ 包目录
     remote_pkg = unzipped / "launcher"
     if remote_pkg.exists():
         local_pkg = BASE / "launcher"
@@ -264,6 +263,7 @@ def do_launcher_update():
         except Exception as e:
             return False, f"覆盖 launcher/ 包目录失败: {e}", False
 
+    # 合并 config.json（保留本地 repo/publish，用远端 launcher 节）
     cfg_path = BASE / "config.json"
     remote_cfg_p = unzipped / "config.json"
     if remote_cfg_p.exists() and cfg_path.exists():
@@ -277,7 +277,7 @@ def do_launcher_update():
         except Exception as e:
             return False, f"合并 config.json 失败: {e}", False
 
-    # 覆盖 apps/* 下的所有应用（递归处理任意子目录），不保留 .bak
+    # 覆盖 apps/*（递归任意子目录）
     apps_in_zip = unzipped / "apps"
     if apps_in_zip.exists() and apps_in_zip.is_dir():
         for sub_dir in apps_in_zip.iterdir():
@@ -292,10 +292,8 @@ def do_launcher_update():
                         shutil.rmtree(target, ignore_errors=True)
                     shutil.copytree(app_sub, target)
                 except Exception as e:
-                    try:
-                        print(f"[WARN] 更新应用 {app_sub.name} 失败: {e}")
-                    except (UnicodeEncodeError, AttributeError):
-                        pass
+                    from .config import safe_print
+                    safe_print(f"[WARN] 更新应用 {app_sub.name} 失败: {e}")
 
     shutil.rmtree(tmp_root, ignore_errors=True)
     config.reload_config()

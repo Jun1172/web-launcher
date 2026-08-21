@@ -20,7 +20,7 @@ from pathlib import Path
 
 from http.server import ThreadingHTTPServer
 
-from .config import LAUNCHER_HOST, LAUNCHER_PORT, LAUNCHER_TITLE, LAUNCHER_VERSION
+from .config import LAUNCHER_HOST, LAUNCHER_PORT, LAUNCHER_TITLE, LAUNCHER_VERSION, safe_print
 from .process_manager import terminate_all
 from .http_handler import Handler
 
@@ -181,7 +181,7 @@ if _IS_WIN:
         try:
             if msg == _WM_NCCALCSIZE and wparam:
                 # 客户区 = 整个窗口：WS_THICKFRAME 的可见边框（黑/白）彻底消失
-                _safe_print("[DBG] NCCALCSIZE 拦截 -> 0")
+                safe_print("[DBG] NCCALCSIZE 拦截 -> 0")
                 return 0
             if msg == _WM_APP_BORDERLESS:
                 # 工作线程转发来的请求：进入原生 WM_NCLBUTTONDOWN 模态循环
@@ -220,7 +220,7 @@ def _ensure_borderless():
         global _wndproc_keepalive, _orig_wndproc
         try:
             style = _user32.GetWindowLongW(hwnd, _GWL_STYLE)
-            _safe_print(f"[DBG] 开始处理 hwnd={hwnd}")
+            safe_print(f"[DBG] 开始处理 hwnd={hwnd}")
             _user32.SetWindowLongW(
                 hwnd, _GWL_STYLE,
                 (style & ~_WS_OVERLAPPEDWINDOW) | _WS_POPUP | _WS_THICKFRAME | _WS_SYSMENU,
@@ -251,7 +251,7 @@ def _ensure_borderless():
                 )
                 if prev:
                     _orig_wndproc = ctypes.c_void_p(prev)
-            _safe_print(f"[DBG] hwnd={hwnd} 子类化 orig=0x{_orig_wndproc.value or 0:x} "
+            safe_print(f"[DBG] hwnd={hwnd} 子类化 orig=0x{_orig_wndproc.value or 0:x} "
                         f"our=0x{ctypes.cast(_borderless_wndproc, ctypes.c_void_p).value or 0:x}")
             _user32.SetWindowPos(
                 hwnd, 0, 0, 0, 0, 0,
@@ -268,7 +268,7 @@ def _ensure_borderless():
                 _user32.SetWindowPos(hwnd, 0, rect.left, rect.top, _w, _h, _SWP_NOZORDER)
             _borderless_done.set()
         except Exception as e:
-            _safe_print(f"[DBG] _ensure_borderless 异常: {e!r}")
+            safe_print(f"[DBG] _ensure_borderless 异常: {e!r}")
 
 
 def _start_borderless_poller():
@@ -296,14 +296,6 @@ def _redirect_stdout_if_needed():
         log_path = Path(sys.executable).parent / "launcher.log"
         sys.stdout = open(log_path, "a", encoding="utf-8")
         sys.stderr = sys.stdout
-
-
-def _safe_print(msg):
-    """安全 print：处理 -w 模式 stdout=None / GBK 编码无法输出 emoji 的问题。"""
-    try:
-        print(msg)
-    except (UnicodeEncodeError, AttributeError, ValueError):
-        pass
 
 
 def _wait_port_ready(host, port, timeout=8):
@@ -415,7 +407,7 @@ def _start_http_server(server):
     try:
         server.serve_forever()
     except Exception as e:
-        _safe_print(f"[ERR] HTTP 服务器异常: {e}")
+        safe_print(f"[ERR] HTTP 服务器异常: {e}")
 
 
 def main():
@@ -427,9 +419,9 @@ def main():
         has_webview = True
     except ImportError:
         has_webview = False
-        _safe_print("[WARN] 未安装 pywebview，回退到纯 HTTP 模式")
-        _safe_print("       安装桌面窗口模式: pip install pywebview")
-        _safe_print(f"       浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+        safe_print("[WARN] 未安装 pywebview，回退到纯 HTTP 模式")
+        safe_print("       安装桌面窗口模式: pip install pywebview")
+        safe_print(f"       浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
 
     # 2. 注册退出钩子（清理所有子进程）
     atexit.register(terminate_all)
@@ -442,17 +434,17 @@ def main():
 
     # 4. 等待 HTTP 端口就绪
     if not _wait_port_ready(LAUNCHER_HOST, LAUNCHER_PORT, timeout=8):
-        _safe_print(f"[ERR] HTTP 端口 {LAUNCHER_PORT} 未就绪，可能被占")
+        safe_print(f"[ERR] HTTP 端口 {LAUNCHER_PORT} 未就绪，可能被占")
         return
 
-    _safe_print(f"[READY] {LAUNCHER_TITLE} v{LAUNCHER_VERSION} 已就绪")
+    safe_print(f"[READY] {LAUNCHER_TITLE} v{LAUNCHER_VERSION} 已就绪")
 
     # 5. 无 pywebview → 纯 HTTP 模式（阻塞主线程，Ctrl+C 退出）
     if not has_webview:
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            _safe_print("\n[STOP] 用户中断，正在关闭所有应用进程...")
+            safe_print("\n[STOP] 用户中断，正在关闭所有应用进程...")
             terminate_all()
         return
 
@@ -553,21 +545,21 @@ def main():
         webview.start(func=_after_start)
         gui_ok = True
     except Exception as e:
-        _safe_print(f"[WARN] GUI 窗口启动失败: {e}")
-        _safe_print("[WARN] 回退到纯 HTTP 模式，请用浏览器访问:")
-        _safe_print(f"       http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+        safe_print(f"[WARN] GUI 窗口启动失败: {e}")
+        safe_print("[WARN] 回退到纯 HTTP 模式，请用浏览器访问:")
+        safe_print(f"       http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
 
     if not gui_ok:
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            _safe_print("\n[STOP] 用户中断，正在关闭所有应用进程...")
+            safe_print("\n[STOP] 用户中断，正在关闭所有应用进程...")
         server.shutdown()
         terminate_all()
         return
 
     # 9. 窗口关闭后清理
-    _safe_print("[STOP] 窗口已关闭，正在清理所有应用进程...")
+    safe_print("[STOP] 窗口已关闭，正在清理所有应用进程...")
     server.shutdown()
     terminate_all()
 

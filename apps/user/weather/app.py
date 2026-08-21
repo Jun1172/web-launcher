@@ -18,6 +18,11 @@ CITIES = [
     {"id": "chengdu",   "name": "成都",   "icon": "🌫️", "temp": 24, "desc": "雾霾",   "wind": "微风",     "hum": 72, "aqi": 138, "aqiLabel": "轻度"},
     {"id": "harbin",    "name": "哈尔滨", "icon": "❄️", "temp": 12, "desc": "小雪",   "wind": "北风 5 级", "hum": 56, "aqi": 35,  "aqiLabel": "优"},
 ]
+COORDS = {
+  "beijing": (39.9042, 116.4074), "shanghai": (31.2304, 121.4737),
+  "guangzhou": (23.1291, 113.2644), "chengdu": (30.5728, 104.0668),
+  "harbin": (45.8038, 126.5349),
+}
 FORECAST = {  # 未来 3 天
     "beijing":  [{"d":"明天","i":"⛅","t":27},{"d":"后天","i":"🌧️","t":23},{"d":"大后天","i":"☀️","t":29}],
     "shanghai": [{"d":"明天","i":"🌧️","t":24},{"d":"后天","i":"⛅","t":25},{"d":"大后天","i":"☀️","t":28}],
@@ -100,6 +105,16 @@ function render(){
   ).join('');
   document.querySelectorAll('.tab').forEach(t=>
     t.classList.toggle('active',t.dataset.id===cur));
+  fetch('/api/live?id='+encodeURIComponent(cur)).then(r=>r.json()).then(live=>{
+    if(live.error||live.city!==cur)return;
+    document.getElementById('icon').textContent=live.icon;
+    document.getElementById('temp').textContent=live.temp+'°';
+    document.getElementById('desc').textContent=live.desc+' · 实时';
+    document.getElementById('wind').textContent=live.wind;
+    document.getElementById('hum').textContent=live.hum+'%';
+    document.getElementById('forecast').innerHTML=(live.forecast||[]).map(x=>
+      `<div class="fc"><div class="d">${x.d}</div><div class="i">${x.i}</div><div class="t">${x.t}°</div></div>`).join('');
+  }).catch(()=>{});
 }
 const tb=document.getElementById('tabs');
 CITIES.forEach(c=>{
@@ -117,6 +132,42 @@ def render_page():
     fore_js = json.dumps(FORECAST, ensure_ascii=False)
     inject = f"<script>window.CITIES={cities_js};window.FORECAST={fore_js};</script>"
     return HTML.replace("</head>", inject + "</head>", 1)
+
+
+def live_weather(city_id):
+    """从 Open-Meteo 获取免密钥实时天气，失败时由前端保留演示数据。"""
+    import urllib.parse
+    import urllib.request
+    lat, lon = COORDS[city_id]
+    query = urllib.parse.urlencode({
+        "latitude": lat, "longitude": lon,
+        "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min",
+        "timezone": "Asia/Shanghai", "forecast_days": 4,
+    })
+    with urllib.request.urlopen("https://api.open-meteo.com/v1/forecast?" + query, timeout=8) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    current = data.get("current", {})
+    daily = data.get("daily", {})
+    code = int(current.get("weather_code", 0))
+    icon, desc = weather_code(code)
+    forecast = []
+    for i, day in enumerate((daily.get("time") or [])[1:4], 1):
+        fc_icon, _ = weather_code(int((daily.get("weather_code") or [0])[i]))
+        forecast.append({"d": day[5:], "i": fc_icon,
+             "t": round((daily.get("temperature_2m_max") or [0])[i])})
+    return {"city": city_id, "icon": icon, "temp": round(current.get("temperature_2m", 0)),
+        "desc": desc, "wind": f"{round(current.get('wind_speed_10m', 0))} km/h",
+        "hum": current.get("relative_humidity_2m", 0), "forecast": forecast}
+
+
+def weather_code(code):
+    if code == 0: return "☀️", "晴"
+    if code in (1, 2, 3): return "⛅", "多云"
+    if code in (45, 48): return "🌫️", "雾"
+    if code >= 80: return "🌧️", "降雨"
+    if code >= 70: return "❄️", "降雪"
+    return "🌦️", "有云"
 
 
 class H(BaseHTTPRequestHandler):
@@ -140,6 +191,22 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(b)
+            return
+        if u.path == "/api/live":
+            cid = parse_qs(u.query).get("id", [None])[0]
+            try:
+                b = json.dumps(live_weather(cid), ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json;charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(b)
+            except Exception as e:
+                b = json.dumps({"error": str(e)}, ensure_ascii=False).encode("utf-8")
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json;charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b)
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/html;charset=utf-8")

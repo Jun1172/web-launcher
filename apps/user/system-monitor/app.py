@@ -598,7 +598,8 @@ let sysData = {};
 function switchTab(tab) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
-    event.target.classList.add('active');
+    const button = document.querySelector(`.tab[onclick="switchTab('${tab}')"]`);
+    if (button) button.classList.add('active');
     document.getElementById(tab).classList.add('active');
     render(tab);
 }
@@ -621,7 +622,8 @@ async function fetchSystem() {
     try {
         const r = await fetch('/api/system');
         sysData = await r.json();
-        render(document.querySelector('.tab.active').textContent.toLowerCase());
+        const active = document.querySelector('.content.active');
+        render(active ? active.id : 'overview');
     } catch (e) {
         console.error(e);
     }
@@ -643,6 +645,7 @@ function render(tab) {
     else if (tab === 'memory') renderMemory();
     else if (tab === 'disk') renderDisk();
     else if (tab === 'network') renderNetwork();
+    else if (tab === 'processes') fetchProcesses();
 }
 
 function renderOverview() {
@@ -807,6 +810,7 @@ function renderProcesses(procs) {
 }
 
 // 初始化
+renderOverview();
 fetchSystem();
 fetchProcesses();
 setInterval(fetchSystem, 2000);

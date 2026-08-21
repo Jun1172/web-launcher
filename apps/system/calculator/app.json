@@ -6,8 +6,8 @@
   "version": "1.0.0",
   "changelog": "支持普通模式与程序员 Hex 模式。",
   "port": 8140,
-  "cmd": ["apps/general/calculator/app.py"],
-  "dock": false,
-  "system": false,
-  "group": "general"
+  "cmd": ["apps/system/calculator/app.py"],
+  "dock": true,
+  "system": true,
+  "group": "system"
 }

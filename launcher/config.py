@@ -26,7 +26,9 @@ else:
     RESOURCE_BASE = BASE
 
 CONFIG_JSON = BASE / "config.json"
-APPS_DIR = RESOURCE_BASE / "apps"
+# APPS_DIR 是客户应用的可写目录；打包后的系统应用位于临时资源目录。
+APPS_DIR = BASE / "apps"
+SYSTEM_APPS_DIR = RESOURCE_BASE / "apps" / "system"
 
 
 # ── 日志系统（按大小轮转，不按时间轮转）──

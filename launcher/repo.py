@@ -16,13 +16,18 @@ import shutil
 import urllib.request
 import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from . import config
 
 
 def repo_get(path):
     """从 REPO_URL/<path> 拉取二进制内容；返回 urllib response（支持 .read()）。"""
-    url = config.REPO_URL.rstrip("/") + "/" + path
+    base_url = (config.REPO_URL or "").strip().rstrip("/")
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("仓库地址未配置或格式无效，请在系统设置中填写 http(s):// 地址")
+    url = base_url + "/" + path.lstrip("/")
     req = urllib.request.Request(url)
     if config.REPO_AUTH:
         token = base64.b64encode(f"{config.REPO_AUTH[0]}:{config.REPO_AUTH[1]}".encode()).decode()

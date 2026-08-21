@@ -6,7 +6,8 @@
   "version": "1.0.0",
   "changelog": "v1.0.0: Markdown文档浏览器，目录树导航，本地图片，离线渲染",
   "port": 8154,
-  "cmd": ["apps/general/md-viewer/app.py"],
-  "system": false,
-  "group": "general"
+  "cmd": ["apps/system/md-viewer/app.py"],
+  "dock": true,
+  "system": true,
+  "group": "system"
 }

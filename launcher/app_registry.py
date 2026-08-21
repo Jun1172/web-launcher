@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from .config import RESOURCE_BASE, APPS_DIR, safe_print
+from .config import APPS_DIR, SYSTEM_APPS_DIR, safe_print
 
 # 模块级全局注册表（所有视图共享）
 system_apps = []
@@ -30,7 +30,7 @@ def derive_group(meta):
     return "system" if meta.get("system") else "user"
 
 
-def resolve_cmd(meta):
+def resolve_cmd(meta, app_dir):
     """把 app.json 里的 cmd 字段解析为实际 Popen 参数列表。
 
     规则：
@@ -46,7 +46,8 @@ def resolve_cmd(meta):
     out = []
     for c in cmd:
         p = Path(c)
-        out.append(str(RESOURCE_BASE / p) if not p.is_absolute() else str(p))
+        # app_dir = <root>/apps/<group>/<id>，cmd 是 <root> 相对路径。
+        out.append(str(app_dir.parents[2] / p) if not p.is_absolute() else str(p))
     if out[0].lower().endswith((".py", ".pyw")):
         # 打包后 sys.executable 是 launcher.exe，用它跑 app.py 会弹新窗口（又跑一次 main）
         # 改用系统 python 命令；用户系统需装 Python 才能跑 .py app
@@ -56,15 +57,24 @@ def resolve_cmd(meta):
 
 
 def _find_all_app_dirs():
-    """递归扫描 APPS_DIR 下所有含 app.json 的目录，返回 [app_dir, ...]。"""
+    """扫描内置 system 与 exe 同级 apps 下的客户应用。"""
     dirs = []
-    if not APPS_DIR.exists():
-        return dirs
-    for app_json in sorted(APPS_DIR.rglob("app.json")):
-        d = app_json.parent
-        if d.name.endswith((".bak", ".tmp.new", ".zip.tmp")):
+    roots = [SYSTEM_APPS_DIR]
+    if APPS_DIR != SYSTEM_APPS_DIR:
+        roots.append(APPS_DIR)
+    seen = set()
+    for root in roots:
+        if not root.exists():
             continue
-        dirs.append(d)
+        for app_json in sorted(root.rglob("app.json")):
+            d = app_json.parent
+            if d.name.endswith((".bak", ".tmp.new", ".zip.tmp")) or d in seen:
+                continue
+            # 外部 apps/system 不覆盖 exe 内置系统应用。
+            if root == APPS_DIR and d.is_relative_to(APPS_DIR / "system"):
+                continue
+            seen.add(d)
+            dirs.append(d)
     return dirs
 
 
@@ -79,7 +89,7 @@ def _scan_all_apps():
             continue
         meta.setdefault("id", d.name)
         meta["system"] = bool(meta.get("system"))
-        meta["cmd"] = resolve_cmd(meta)
+        meta["cmd"] = resolve_cmd(meta, d)
         meta.setdefault("version", "0.0.1")
         meta.setdefault("changelog", "")
         meta.setdefault("released", "")

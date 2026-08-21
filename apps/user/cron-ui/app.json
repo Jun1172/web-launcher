@@ -1,0 +1,13 @@
+{
+  "id": "cron-ui",
+  "name": "可视化定时任务",
+  "icon": "⏱️",
+  "color": "#8b5cf6",
+  "version": "1.0.0",
+  "changelog": "v1.0.0: 可视化Cron表达式生成，内存调度器，手动触发，执行日志",
+  "port": 8152,
+  "cmd": ["apps/user/cron-ui/app.py"],
+  "dock": false,
+  "system": false,
+  "group": "user"
+}

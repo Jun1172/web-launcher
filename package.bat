@@ -12,7 +12,6 @@ if exist ".\dist\launcher.exe" (
 pyinstaller -F -w -i .\doc\images\launcher.ico ^
     --add-data "launcher\templates;launcher\templates" ^
     --add-data "apps\system;apps\system" ^
-    --add-data "apps\user;apps\user" ^
     --hidden-import=clr ^
     --hidden-import=webview.platforms.edgechromium ^
     --hidden-import=webview.platforms.winforms ^
@@ -22,7 +21,12 @@ pyinstaller -F -w -i .\doc\images\launcher.ico ^
 
 if errorlevel 1 (
     echo [ERROR] PyInstaller 打包失败。
-    exit /b %errorlevel%
+    exit /b 1
+)
+if not exist ".\dist\config.json" copy /Y ".\config.json" ".\dist\config.json" >nul
+if not exist ".\dist\config.json" (
+    echo [ERROR] 无法复制 config.json 到 dist 目录。
+    exit /b 1
 )
 echo [OK] 打包完成：dist\launcher.exe
 endlocal

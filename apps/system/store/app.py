@@ -84,6 +84,12 @@ body {
 }
 .search::placeholder { color: var(--text-secondary); }
 .search:focus { background: rgba(255,255,255,0.08); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.group-filter { display:flex; align-items:center; gap:10px; margin-top:12px; }
+.group-filter label { color:var(--text-secondary); font-size:13px; white-space:nowrap; }
+.group-filter select { flex:1; max-width:260px; padding:10px 12px; border-radius:10px;
+  background:var(--glass-bg); border:1px solid var(--glass-border); color:var(--text-primary);
+  font-size:13px; outline:none; color-scheme:dark; }
+.group-filter select option { background:#172033; color:#f8fafc; }
 
 /* ── Tabs 分段控制器 ── */
 .tabs {
@@ -261,6 +267,12 @@ body {
   <div class="search-box">
     <input class="search" id="search" placeholder="搜索应用名称或描述…" oninput="filterApps()">
   </div>
+  <div class="group-filter">
+    <label for="groupFilter">应用分组</label>
+    <select id="groupFilter" onchange="filterGroup()">
+      <option value="all">全部分组</option>
+    </select>
+  </div>
 </div>
 
 <div class="app-list" id="list"></div>
@@ -303,7 +315,7 @@ body {
 
 <script>
 const LAUNCHER_URL = window.LAUNCHER_URL || '';
-let repoApps=[], installedApps=[], currentTab='all', searchQuery='';
+let repoApps=[], installedApps=[], currentTab='all', searchQuery='', groupQuery='all';
 
 async function api(path){
   const r = await fetch(LAUNCHER_URL + path);
@@ -369,6 +381,7 @@ async function loadData(){
         localReleased: local ? local.released : null,
       };
     });
+    updateGroups();
     
     const installedCount = installedApps.filter(a => !a.system).length;
     document.getElementById('sub').textContent = `共 ${repoApps.length} 个应用 · 已安装 ${installedCount} 个`;
@@ -406,10 +419,26 @@ function filterApps(){
   render();
 }
 
+function filterGroup(){
+  groupQuery = document.getElementById('groupFilter').value;
+  render();
+}
+
+function updateGroups(){
+  const select = document.getElementById('groupFilter');
+  const current = groupQuery;
+  const groups = [...new Set(repoApps.map(a => a.group || '未分类'))].sort();
+  select.innerHTML = '<option value="all">全部分组</option>' +
+    groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  select.value = groups.includes(current) ? current : 'all';
+  groupQuery = select.value;
+}
+
 function render(){
   let list = repoApps;
   if(currentTab === 'installed') list = list.filter(a => a.installed);
   else if(currentTab === 'updates') list = list.filter(a => a.upgradable);
+  if(groupQuery !== 'all') list = list.filter(a => (a.group || '未分类') === groupQuery);
   
   if(searchQuery) {
     list = list.filter(a => a.name.toLowerCase().includes(searchQuery) || (a.changelog && a.changelog.toLowerCase().includes(searchQuery)));

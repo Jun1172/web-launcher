@@ -30,6 +30,23 @@ CONFIG_JSON = BASE / "config.json"
 APPS_DIR = BASE / "apps"
 SYSTEM_APPS_DIR = RESOURCE_BASE / "apps" / "system"
 
+DEFAULT_CONFIG = {
+    "launcher": {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "title": "WebLauncher",
+        "version": "1.0.0",
+        "released": "",
+        "changelog": "",
+    },
+    "repo": {
+        "url": "https://1.15.30.237",
+        "auth": None,
+        "verify_ssl": False,
+    },
+    "publish": {},
+}
+
 
 # ── 日志系统（按大小轮转，不按时间轮转）──
 # launcher.log：结构化日志，5MB 轮转，保留 3 个备份
@@ -81,13 +98,22 @@ def safe_print(msg):
 
 
 def load_config():
-    """从 CONFIG_JSON 读取 dict；不存在返回 {}。每次调用都会重新读磁盘。"""
+    """从 CONFIG_JSON 读取配置；不存在时创建默认配置。"""
     if CONFIG_JSON.exists():
         try:
             return json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
-    return {}
+    config = json.loads(json.dumps(DEFAULT_CONFIG))
+    try:
+        CONFIG_JSON.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_JSON.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError:
+        # 只读目录下仍允许 Launcher 使用内存中的默认配置。
+        pass
+    return config
 
 
 # ── 全局配置变量（reload_config 会重新赋值这些变量）──

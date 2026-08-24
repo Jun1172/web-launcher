@@ -13,6 +13,10 @@
 
 `web-launcher` 提供运行时、桌面界面、应用商店和发布工具；`web-launcher-apps` 提供可由本项目加载和发布的公开游戏、通用工具、ROS2 工具及示例应用。
 
+## 🔧 系统应用演示
+![Logo](doc/images/系统信息.png)
+![Logo](doc/images/应用商店.png)
+
 ## 📌 项目定位
 
 | 维度 | 说明 |
@@ -301,38 +305,6 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 - 把 `apps/system/` 全部预装到主板（出厂默认）
 - `apps/user/` 由用户后续通过应用商店安装
 - 仓库 URL 配置成自己的镜像（HTTPS + basic auth 可选）
-
-## 📂 目录结构
-
-```
-web-launcher/
-├── launcher.py              # 薄壳入口（import launcher.__main__.main）
-├── publish.py                # 发布工具（应用 + launcher 自更新）
-├── config.json              # 配置（host/port/repo/publish）
-├── layout.json              # 用户布局覆盖（dock/hidden；首次保存后生成）
-├── README.md                # 本文档
-├── launcher/                # 实现包（10 个功能模块）
-│   ├── __init__.py
-│   ├── __main__.py          # 主入口（HTTP server + atexit 回收）
-│   ├── config.py            # 配置加载 / 路径常量
-│   ├── app_registry.py      # 应用扫描 / 注册表
-│   ├── process_manager.py   # spawn / port_probe / close / terminate_all
-│   ├── app_operations.py    # install / uninstall / 版本回退 / launcher OTA
-│   ├── repo.py              # 仓库索引 / HTTP 客户端 / 原子解压
-│   ├── http_handler.py      # 路由
-│   ├── frontend.py          # 首页 HTML 渲染
-│   ├── layout.py            # 用户布局覆盖（layout.json 读写 + apply_layout）
-│   ├── updater.py           # 二进制 OTA 替换脚本（Win .bat / Linux .sh）
-│   └── templates/
-│       └── home.html         # 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务）
-├── apps/
-│   ├── README.md            # 应用开发指南
-│   ├── system/              # 系统应用（默认安装、不可卸载）
-│   ├── user/                # 用户示例应用（可增删）
-│   ├── general/             # 通用工具
-└── doc/                     # 部署文档
-    └── 服务器端-部署.md
-```
 
 ## 🔒 安全注意事项
 

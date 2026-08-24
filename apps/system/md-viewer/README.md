@@ -1,6 +1,6 @@
-# 📖 离线设备手册（md-viewer）
+# 📚 Web Launcher 项目说明书（md-viewer）
 
-Markdown 文档浏览器，用于离线浏览设备手册 / 技术文档。
+Markdown 文档浏览器，用于离线浏览 Web Launcher 项目说明、应用文档和部署资料。
 
 ## 功能
 - 左侧目录树递归展示 `docs/` 下的 Markdown 文档，文件夹可折叠

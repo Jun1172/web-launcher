@@ -1,10 +1,10 @@
 {
   "id": "md-viewer",
-  "name": "离线设备手册",
+  "name": "Web Launcher 说明书",
   "icon": "📖",
   "color": "#ec4899",
   "version": "1.0.0",
-  "changelog": "v1.0.0: Markdown文档浏览器，目录树导航，本地图片，离线渲染",
+  "changelog": "v1.1.0: 改为 Web Launcher 项目离线说明书",
   "port": 8154,
   "cmd": ["apps/system/md-viewer/app.py"],
   "dock": true,

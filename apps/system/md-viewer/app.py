@@ -1,4 +1,4 @@
-"""md-viewer —— 离线设备手册
+"""md-viewer —— Web Launcher 项目说明书
 Markdown 文档浏览器：左侧目录树导航 + 右侧渲染阅读 + 本地图片离线加载。
 单文件 HTTP 服务（ThreadingHTTPServer），前端 HTML/CSS/JS 全部内嵌，离线可用。
 
@@ -35,9 +35,9 @@ IMAGE_CT = {
 }
 
 # docs/ 缺失时自动生成的示例 README（运行时兜底，存在则不覆盖）
-SAMPLE_README = """# 欢迎使用离线设备手册
+SAMPLE_README = """# Web Launcher 项目说明书
 
-这是自动生成的示例文档。把你的 `.md` 设备手册放进 `docs/` 目录即可在左侧目录树浏览。
+这是自动生成的示例文档。把项目说明、应用文档或部署手册放进 `docs/` 目录即可在左侧目录树浏览。
 
 ## 快速开始
 
@@ -124,7 +124,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>📖 离线设备手册</title>
+<title>📚 Web Launcher 项目说明书</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -219,7 +219,7 @@ details[open]>summary .arrow{transform:rotate(90deg)}
 <body>
 <div class="app">
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-head">📖 离线设备手册
+    <div class="sidebar-head">📚 Web Launcher 项目说明书
       <span class="sub">md-viewer · :__PORT__</span>
     </div>
     <div id="tree"></div>

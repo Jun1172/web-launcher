@@ -1,122 +1,114 @@
-# ENV-100 智能环境监测节点 · 设备手册
+# Web Launcher 项目说明书
 
-> **版本**：v2.3.1 ｜ 适用固件 ≥ 2.0.0 ｜ 最后更新：2026-08 ｜ 文档编号：DOC-ENV100-231
+> 离线版项目文档｜当前 launcher 版本：1.0.5
 
-## 简介
+## 项目简介
 
-ENV-100 是一款面向工业现场的多功能环境监测节点，集成温湿度、大气压、CO₂、PM2.5/PM10、光照与噪声七项传感器，支持 Modbus-RTU、MQTT、HTTP 三种上报方式，可独立离线运行，也可接入上位机系统。
+Web Launcher 是一个基于 Python 标准库的轻量级多语言应用运行时，适合 Windows、Linux、macOS 和 ARM 设备。它可以启动和管理 Python、C/C++、Web 等应用，并提供桌面界面、应用商店、安装升级、版本回退和 launcher 自更新能力。
 
-本手册供现场调试工程师与集成人员使用，涵盖接线、配置、API 调用与维护注意事项。
+公开仓库：
 
-## 功能特性
+- [GitHub：web-launcher](https://github.com/Jun1172/web-launcher)
+- [Gitee：web-launcher](https://gitee.com/jun626/web-launcher)
+- [GitHub：web-launcher-apps](https://github.com/Jun1172/web-launcher-apps)
 
-- **多传感器融合**：温湿度 / 气压 / CO₂ / 颗粒物 / 光照 / 噪声，单节点全覆盖
-- **离线运行**：内置 8MB 存储，断网本地缓存 7 天数据，恢复后自动补传
-- **多协议上报**：同时支持 Modbus-RTU（RS485）、MQTT、HTTP POST
-- **低功耗**：休眠模式 < 3mA，适合电池供电场景
-- **工业级防护**：IP65 外壳，-20℃ ~ +60℃ 工作温度
-- **远程升级**：OTA 固件升级，支持回滚
+## 快速开始
 
-## 接线说明
+需要 Python 3.8 或更高版本，无第三方依赖即可运行：
 
-设备底部为 8 位可插拔端子，引脚定义如下：
+```bash
+python launcher.py
+```
 
-| 端子 | 信号 | 方向 | 说明 |
-| :--: | :-- | :--: | :-- |
-| 1 | VCC | IN | 直流供电 9–24V，建议 12V |
-| 2 | GND | — | 电源地，与信号地共地 |
-| 3 | RS485-A | I/O | Modbus-RTU 差分正 |
-| 4 | RS485-B | I/O | Modbus-RTU 差分负 |
-| 5 | DO-1 | OUT | 数字输出 1，开漏 30V/100mA |
-| 6 | DI-1 | IN | 数字输入 1，支持干接点 |
-| 7 | ALARM | OUT | 故障报警输出，低电平有效 |
-| 8 | SHIELD | — | 屏蔽层接地端子 |
+启动后打开 `http://127.0.0.1:8000/`。如果安装了桌面窗口依赖，launcher 也可以使用桌面窗口模式；否则使用浏览器访问。
 
-接线示意图：
+## 核心组成
 
-![ENV-100 接线示意图](images/wiring.svg)
+| 组件 | 作用 |
+|------|------|
+| `launcher.py` | 启动入口 |
+| `launcher/` | 配置、应用注册、进程管理、HTTP 路由和更新功能 |
+| `apps/` | 内置应用和本地接入的应用 |
+| `config.json` | launcher、仓库和发布配置 |
+| `publish.py` | 打包并发布应用或 launcher 更新 |
 
-> 提示：RS485 总线末端节点建议并联 120Ω 终端电阻；多节点组网时总线长度不超过 1000 米。
+## 界面概览
 
-## 配置流程
+### 桌面与应用入口
 
-1. 接通 12V 电源，**PWR** 指示灯常亮
-2. 等待 **RUN** 指示灯以 1Hz 闪烁（约 3 秒），表示进入工作态
-3. 通过 USB-C 配置口连接电脑（虚拟串口，115200 8N1），或使用 Modbus 写寄存器配置
-4. 配置上报地址、采集间隔、报警阈值
-5. 保存配置后自动重启生效
+launcher 提供分页桌面、Dock 栏和应用图标入口，系统应用与用户应用可以统一管理。
 
-## API 文档
+![Web Launcher 桌面](images/桌面.png)
 
-设备默认通过 HTTP 上报到配置的服务器，接口约定如下：
+### 系统信息
 
-### 上行：数据上报
+系统信息页面集中展示 CPU、内存、磁盘、运行环境和已安装应用状态。
 
-`POST /api/v1/devices/{device_id}/data`
+![系统信息](images/系统信息.png)
 
-请求体（JSON）：
+### 系统监控
+
+系统监控应用提供 CPU、内存、磁盘、网络和进程等运行状态查看能力。
+
+![系统监控](images/系统监控.png)
+
+### 网络工具
+
+网络诊断工具支持 Ping 测试、端口扫描和 DNS 解析，适合设备现场排查网络问题。
+
+![网络诊断工具](images/网络工具.png)
+
+## 应用接入
+
+每个应用目录至少包含一个 `app.json`，清单示例：
 
 ```json
 {
-  "device_id": "ENV100-A0B1C2",
-  "timestamp": 1724236800,
-  "uptime_s": 86400,
-  "sensors": {
-    "temperature_c": 26.4,
-    "humidity_pct": 58.2,
-    "pressure_hpa": 1013.1,
-    "co2_ppm": 612,
-    "pm25_ugm3": 18,
-    "pm10_ugm3": 35,
-    "lux": 320,
-    "noise_db": 42.5
-  },
-  "alarms": []
+  "id": "my-app",
+  "name": "我的应用",
+  "version": "1.0.0",
+  "cmd": ["apps/user/my-app/app.py"],
+  "port": 8120,
+  "group": "user"
 }
 ```
 
-响应：`200 OK`
+`cmd` 定义启动命令，Python 文件会自动使用当前 Python 解释器；填写 `port` 后 launcher 会等待端口监听，无端口的后台进程启动后即视为就绪。
 
-```json
-{ "status": "ok", "server_time": 1724236801 }
+## 应用分类
+
+- `system`：系统应用，默认安装、可更新、不可卸载。
+- `user`：用户应用，可通过应用商店安装和卸载。
+- 自定义分组：通过 `group` 字段划分工具集合。
+
+外部应用仓库可按组将目录复制或软链到 launcher 的 `apps/` 下。接入时避免覆盖系统目录，也不要同时放入相同 `id` 的多个应用。
+
+## 发布应用
+
+```bash
+python publish.py --list
+python publish.py apps/user/my-app --dry-run
+python publish.py apps/user/my-app
+python publish.py --all
 ```
 
-### 下行：Modbus 寄存器
+launcher 自身更新使用：
 
-常用保持寄存器（功能码 0x03 读 / 0x10 写）：
-
-```text
-地址   名称              类型     读写  说明
-0x0001 采集间隔          uint16   RW   单位秒，范围 5–3600
-0x0002 上报模式          uint16   RW   0=关闭 1=MQTT 2=HTTP 3=Modbus
-0x0003 温度校准          int16    RW   单位 0.1℃，范围 -50~50
-0x0010 实时温度          int16    RO   单位 0.1℃
-0x0011 实时湿度          uint16   RO   单位 0.1%
-0x0012 实时CO2           uint16   RO   单位 ppm
-0x0100 固件版本          uint16   RO   BCD 编码，如 0x0203 = v2.3
-0x0101 重启命令          uint16   WO   写 0xA55A 触发软重启
+```bash
+python publish.py --launcher --changelog "更新说明"
 ```
 
-读寄存器示例（Python）：
+发布工具会生成应用 zip、计算 SHA-256，并更新远端 `index.json`。应用仓库和 launcher 仓库都提供发布脚本，但 launcher 自更新应使用 launcher 仓库中的脚本。
 
-```python
-import struct
+## 配置与安全
 
-# 读取 0x0010 起的 3 个寄存器（温度/湿度/CO2）
-resp = modbus_client.read_holding_registers(address=0x0010, count=3)
-temp, hum, co2 = struct.unpack('>hhH', resp.encode())
-print(f"温度 {temp/10:.1f}℃  湿度 {hum/10:.1f}%  CO2 {co2}ppm")
-```
+- 默认只监听 `127.0.0.1`，如需远程访问应增加反向代理和鉴权。
+- 仓库可以配置 HTTPS、BASIC 认证和 SSL 校验选项。
+- `env` 等敏感配置不会写入远端应用索引。
+- C/C++ 应用需要针对目标操作系统和 CPU 架构分别编译。
 
-## 注意事项
+## 文档目录
 
-- **供电**：禁止超过 24V，反接保护仅覆盖瞬态，长时间反接会损坏设备
-- **RS485**：A/B 不可接反；现场干扰大时务必使用屏蔽双绞线，屏蔽层接端子 8
-- **传感器寿命**：CO₂ 与颗粒物传感器预期寿命 5 年，到期需返厂校准
-- **存储**：固件升级前请确认本地缓存已补传完毕，升级会清空待发队列
-- **IP65**：外壳防护针对淋雨，不浸水；端子插拔时务必先断电
-- **固件**：仅可使用官方签名固件，刷入第三方固件将失去保修
+本应用会递归展示 `docs/` 下的 `.md` 和 `.markdown` 文件。可以按主题增加子目录，也可以在 Markdown 中引用 `docs/images/` 下的本地图片。所有文档和渲染代码都内置在应用中，断网时仍可阅读。
 
----
-
-如需更多协议细节，请参阅 `docs/protocol/` 目录下的补充说明。
+更多字段和 API 说明请查看项目仓库中的 [README.md](https://github.com/Jun1172/web-launcher#readme) 与 `apps/README.md`。

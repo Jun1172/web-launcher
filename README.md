@@ -5,6 +5,14 @@
 
 适用场景：嵌入式主板、工控机、边缘设备、本地开发机——只要能跑 Python，就能用 launcher 管理任意语言写的应用。
 
+## 🔗 相关仓库
+
+- [Gitee：web-launcher](https://gitee.com/jun626/web-launcher)
+- [GitHub：web-launcher](https://github.com/Jun1172/web-launcher)
+- [GitHub：web-launcher-apps（应用仓库）](https://github.com/Jun1172/web-launcher-apps)
+
+`web-launcher` 提供运行时、桌面界面、应用商店和发布工具；`web-launcher-apps` 提供可由本项目加载和发布的公开游戏、通用工具、ROS2 工具及示例应用。
+
 ## 📌 项目定位
 
 | 维度 | 说明 |
@@ -100,11 +108,9 @@
 │    store/  todo/  clock/│    │  packages/<id>-<ver>.zip │
 │    sysinfo/ settings/   │    │  launcher-<ver>.zip      │
 │  apps/user/             │    └──────────────────────────┘
-│    hello/  notes/       │              ▲
-│    weather/ game2048/   │              │ scp
-│    proc-demo/ file-demo/│ ─────────────┘
-│    system-monitor/      │  publish.py --all / --launcher
-│    cpp-hello/ (C++)     │
+│  apps/general/          │              ▲
+│  apps/game/ (外部仓库)  │ ─────────────┘
+│  app.json 递归扫描      │  publish.py --all / --launcher
 └─────────────────────────┘
 ```
 
@@ -117,48 +123,29 @@ python launcher.py
 # 2. 浏览器打开（一般会自动打开）
 # http://127.0.0.1:8000/
 
+| 🧮 calculator | 8140 | 科学计算器 |
 # 3. 点桌面图标打开任意应用，或点 🛒 应用商店安装新应用
-```
 
 需要 Python ≥ 3.8，无第三方依赖（标准库足够）。
 
+| 📖 md-viewer | 8154 | 本地 Markdown 文档查看器 |
 ## 📋 app.json Schema
 
 应用清单文件，放在 `apps/system/<id>/app.json` 或 `apps/user/<id>/app.json`。
 
-### 当前生效字段
-
 | 字段 | 类型 | 必填 | 默认 | 说明 |
-|------|------|------|------|------|
-| `id` | string | ✅ | — | 应用唯一标识（与目录名一致） |
-| `name` | string | ✅ | — | 显示名称 |
-| `version` | string | ✅ | — | 语义化版本号（`1.0.0`） |
-| `cmd` | string[] | ❌ | — | 启动命令（`.py` 自动加 python 前缀） |
-| `port` | int | ❌ | — | HTTP/TCP 端口（用于端口就绪探测与 iframe URL） |
-| `icon` | string | ❌ | 📦 | emoji 图标 |
-| `color` | string | ❌ | #999 | 主题色（CSS） |
-| `changelog` | string | ❌ | — | 版本说明 |
-| `released` | string | ❌ | — | 发布时间（ISO 8601） |
-| `dock` | bool | ❌ | false | 是否常驻底部 Dock（出厂默认；用户可用 layout.json 覆盖） |
-| `system` | bool | ❌ | false | 是否系统应用（按此字段判断，目录结构 system/user 仅用于物理组织） |
-| `group` | string | ❌ | 推导 | 自定义分组（如 `"business"`、`"admin"`）；缺省时按 `system` 推导 |
-| `requires` | object | ❌ | `{}` | 依赖声明（**当前未校验，仅作文档**，见路线图） |
+| 👋 hello | 8120 | 最简交互 demo |
+| 🕒 cron-ui | 8121 | 可视化定时任务 |
+| 📄 file-demo | — | 文件示例 |
+| 🎮 game2048 | 8122 | 2048 小游戏 |
+| 📋 log-viewer | 8123 | 日志查看示例 |
+| 🕰️ nixie-clock | 8124 | 拟真数码管时钟 |
+| 📈 system-monitor | 8125 | 系统资源实时监控 |
+| 🌤️ weather | 8126 | 天气示例 |
+| 🦾 cpp-hello | 8127 | C++ 应用部署模板 |
+| 📝 todo | 8128 | 待办清单示例 |
 
-### 字段当前行为说明
-
-> ⚠️ 下列字段在 schema 文档中曾出现过，但**当前代码不读取 / 不生效**，路线图里已列为待实现：
->
-> | 字段 | 当前行为 |
-> |------|----------|
-> | `ready_check` | **不读取**；launcher 只看 `port` 字段做 TCP 端口探测 |
-> | `restart_policy` | **不读取**；进程崩溃后不自动重启 |
-> | `stop_signal` | **不读取**；`close_app` 直接 `p.terminate()` |
-> | `stop_timeout` | **不读取**；硬编码 2 秒后强 kill |
-> | `workdir` | **不读取**；`Popen` 未传 `cwd` |
-> | `env` | **不读取**；`Popen` 未传 `env`（且 `env` 不进 index.json，避免密钥泄漏） |
->
-> 写在 app.json 里不会报错，但也不会生效。这些能力在路线图中。
-
+`cpp-hello` 是 C/C++ 应用的接入模板。`socket`、串口、ROS2 等原生程序可参照它：源码 + `build.{bat,sh}` + `run.py` 包装 + `app.json`。
 ### 最小可用清单
 
 ```json
@@ -254,61 +241,38 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 
 ## 🎯 内置应用
 
+当前仓库通过递归扫描 `apps/**/app.json` 注册应用。应用的发布分组由 `app.json` 中的 `group` 字段决定，目录名只是物理组织方式；因此 `system`、`user` 和自定义分组可以并存。
+
 ### 系统应用（`apps/system/`）
 
 | 应用 | 端口 | 说明 |
 |------|------|------|
+| 🧮 calculator | 8140 | 科学计算器 |
 | 🛒 应用商店 store | 8100 | 安装 / 升级 / 卸载用户应用，详情弹窗 + 历史版本回退 |
-| 📝 待办清单 todo | 8101 | 最简待办 demo |
 | ⏱️ 番茄钟 clock | 8102 | 计时器 demo |
 | 📊 系统信息 sysinfo | 8103 | CPU / 内存 / 磁盘 + 版本信息 + 已安装应用列表 |
 | ⚙️ 设置 settings | 8104 | 仓库地址 / BASIC 认证 / SSL 校验配置 |
+| 📖 md-viewer | 8154 | 本地 Markdown 文档查看器 |
 
 ### 用户应用 demo（`apps/user/`）
 
-#### Web 类 demo（端口 8110-8114）
-
 | 应用 | 端口 | 演示场景 |
 |------|------|----------|
-| 👋 hello | 8110 | 最简交互（计数器 + 时钟） |
-| 🗒️ notes | 8112 | `localStorage` 持久化 |
-| 🌤️ weather | 8113 | 多视图切换 + mock 数据 + JSON API |
-| 🎮 game2048 | 8114 | 完整游戏（矩阵算法 + 键盘/触摸） |
+| 👋 hello | 8120 | 最简交互 demo |
+| 🕒 cron-ui | 8121 | 可视化定时任务 |
+| 📄 file-demo | — | 文件示例 |
+| 🎮 game2048 | 8122 | 2048 小游戏 |
+| 📋 log-viewer | 8123 | 日志查看示例 |
+| 🕰️ nixie-clock | 8124 | 拟真数码管时钟 |
+| 📈 system-monitor | 8125 | 系统资源实时监控 |
+| 🌤️ weather | 8126 | 天气示例 |
+| 🦾 cpp-hello | 8127 | C++ 应用部署模板 |
+| 📝 todo | 8128 | 待办清单示例 |
 
-#### 后台进程 demo（无端口）
+### 通用工具（`apps/general/`）
 
-| 应用 | 演示场景 |
-|------|----------|
-| ⚙️ proc-demo | 进程型应用：无端口，启动后立即视为就绪；展示无 HTTP 服务的应用如何接入 |
-| 📄 file-demo | 占位 stub：无 cmd，启动即视为就绪；演示最简清单 |
+当前包含 `cron-ui`、`file-sharer`、`log-viewer`、`md-viewer`、`net-diag` 等应用，用于演示文件传输、日志查看、Markdown 查看和网络诊断等功能。
 
-#### 实时与原生 demo（端口 8130-8140）
-
-| 应用 | 端口 | 演示场景 |
-|------|------|----------|
-| 📈 system-monitor | 8130 | 实时 CPU / 内存折线图 + TOP 进程 + 网络流量（psutil 优先，无则原生 wmic/proc） |
-| 🦾 cpp-hello | 8140 | **C++ 应用部署模板**：原生 socket HTTP server，跨平台编译产物 + `run.py` 启动包装 + 子进程树清理 |
-
-> `cpp-hello` 是 C/C++ 应用的接入模板。`socket / 串口 / ROS2` 等原生程序可参照它：源码 + `build.{bat,sh}` + `run.py` 包装 + `app.json`。详见 [apps/README.md#部署-cc-应用](apps/README.md#🦾-部署-cc-应用)。
-
-## 🔧 配置
-
-`config.json`：
-
-```json
-{
-  "launcher": {
-    "host": "127.0.0.1",
-    "port": 8000,
-    "title": "我的 Launcher",
-    "version": "1.0.0",
-    "released": "2026-08-18T16:00:00",
-    "changelog": "..."
-  },
-  "repo": {
-    "url": "https://your-repo.example.com",
-    "auth": null,
-    "verify_ssl": false
   },
   "publish": {
     "server": "ubuntu@1.15.30.237",
@@ -364,20 +328,8 @@ web-launcher/
 ├── apps/
 │   ├── README.md            # 应用开发指南
 │   ├── system/              # 系统应用（默认安装、不可卸载）
-│   │   ├── store/           # 🛒 应用商店
-│   │   ├── todo/            # 📝 待办清单
-│   │   ├── clock/           # ⏱️ 番茄钟
-│   │   ├── sysinfo/         # 📊 系统信息
-│   │   └── settings/        # ⚙️ 仓库配置
-│   └── user/                # 用户应用（可增删）
-│       ├── hello/           # 👋 最简 demo
-│       ├── notes/           # 🗒️ 便签
-│       ├── weather/         # 🌤️ 天气
-│       ├── game2048/        # 🎮 2048 小游戏
-│       ├── proc-demo/       # ⚙️ 后台进程 demo
-│       ├── file-demo/       # 📄 占位 stub demo
-│       ├── system-monitor/  # 📈 实时监控
-│       └── cpp-hello/       # 🦾 C++ 应用模板
+│   ├── user/                # 用户示例应用（可增删）
+│   ├── general/             # 通用工具
 └── doc/                     # 部署文档
     └── 服务器端-部署.md
 ```

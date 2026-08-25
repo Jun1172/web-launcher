@@ -8,6 +8,7 @@ python publish.py --user              # 一键发布所有用户应用
 python publish.py --group admin       # 一键发布指定分组的应用
 python publish.py --list              # 仅列出，不发布
 python publish.py --launcher          # 打包并发布 launcher 主程序更新
+python publish.py --sync              # 对照远端 packages/ 清理 index.json 中失效条目
 """
 import argparse
 import datetime
@@ -241,6 +242,114 @@ def write_and_upload_index(index, index_tmp=None):
     )
     print(f"   ✓ index.json 更新完成（{len(index.get('apps', []))} 个应用）")
 
+
+def _list_remote_packages():
+    """ssh 列出远端 packages/ 目录下所有文件名（不含路径）。失败抛异常。"""
+    result = subprocess.run(
+        ["ssh", SERVER, f"ls -1 {REMOTE}/{PACKAGES_DIR}/"],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def sync_remote(*, dry_run=False, yes=False):
+    """对照远端 packages/ 实际文件清单，从 index.json 移除指向失效包的条目。
+
+    处理对象：
+      - apps[].pkg            → 文件不存在则整个条目移除
+      - launcher.pkg          → 不存在则整个 launcher 节点移除
+      - launcher.binary       → 不存在则只移除 binary/binary_sha256/binary_size 子字段
+    """
+    print("📋 拉取远端 index.json...")
+    index, index_tmp = ensure_index()
+
+    print("📦 列出远端 packages/ 实际文件...")
+    try:
+        remote_files = _list_remote_packages()
+    except subprocess.CalledProcessError as e:
+        print(f"❌ ssh ls 失败: {e.stderr or e.stdout or e}")
+        try: index_tmp.unlink()
+        except OSError: pass
+        return False
+    except Exception as e:
+        print(f"❌ 列出远端文件失败: {e}")
+        try: index_tmp.unlink()
+        except OSError: pass
+        return False
+    print(f"   ✓ 远端 packages/ 共 {len(remote_files)} 个文件")
+
+    def _fname(pkg_path):
+        return (pkg_path or "").rsplit("/", 1)[-1] if pkg_path else ""
+
+    apps_before = index.get("apps", [])
+    apps_after = []
+    removed_apps = []
+    for m in apps_before:
+        fname = _fname(m.get("pkg"))
+        if fname and fname not in remote_files:
+            removed_apps.append((m.get("id", "?"), fname))
+        else:
+            apps_after.append(m)
+
+    removed_launcher = []
+    launcher_meta = index.get("launcher")
+    if launcher_meta:
+        pkg_fname = _fname(launcher_meta.get("pkg"))
+        if pkg_fname and pkg_fname not in remote_files:
+            removed_launcher.append(("pkg", pkg_fname))
+            launcher_meta = None
+        else:
+            binary_fname = _fname(launcher_meta.get("binary"))
+            if binary_fname and binary_fname not in remote_files:
+                removed_launcher.append(("binary", binary_fname))
+                for k in ("binary", "binary_sha256", "binary_size"):
+                    launcher_meta.pop(k, None)
+
+    print(f"\n📊 index.json apps: {len(apps_before)} → {len(apps_after)}"
+          f"（移除 {len(removed_apps)} 个）")
+    if removed_apps:
+        print("🗑 移除的 app 条目:")
+        for aid, fname in removed_apps:
+            print(f"   - {aid:20} {fname}")
+    if removed_launcher:
+        print("🗑 launcher 节点调整:")
+        for key, fname in removed_launcher:
+            print(f"   - {key}: {fname}")
+
+    if not removed_apps and not removed_launcher:
+        print("✓ index.json 与 packages/ 一致，无需同步")
+        try: index_tmp.unlink()
+        except OSError: pass
+        return True
+
+    if dry_run:
+        print("\n[--dry-run] 未实际修改远端 index.json")
+        try: index_tmp.unlink()
+        except OSError: pass
+        return True
+
+    if not yes:
+        try:
+            ans = input("\n确认同步并覆盖远端 index.json？[y/N]: ").strip().lower()
+        except EOFError:
+            ans = ""
+        if ans not in ("y", "yes"):
+            print("已取消")
+            try: index_tmp.unlink()
+            except OSError: pass
+            return False
+
+    index["apps"] = apps_after
+    if launcher_meta is not None:
+        index["launcher"] = launcher_meta
+    elif "launcher" in index:
+        del index["launcher"]
+    index["updated"] = datetime.datetime.now().isoformat()
+
+    write_and_upload_index(index, index_tmp)
+    print("✅ 同步完成")
+    return True
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="应用发布工具",
@@ -249,6 +358,8 @@ def parse_args():
                "  python publish.py apps/user/hello                    发布单个 app\n"
                "  python publish.py --all                               发布所有应用\n"
                "  python publish.py --group admin                       发布 admin 分组应用\n"
+               "  python publish.py --sync                              清理 index.json 失效条目\n"
+               "  python publish.py --sync --dry-run                    仅预览不写远端\n"
     )
     g = parser.add_mutually_exclusive_group()
     g.add_argument("app_dir", nargs="?", help="要发布的单个应用路径")
@@ -258,9 +369,11 @@ def parse_args():
     g.add_argument("--group", type=str, help="仅发布指定分组的应用 (例: --group admin)")
     g.add_argument("--list", action="store_true", help="列出所有可发布的应用")
     g.add_argument("--launcher", action="store_true", help="打包并发布 launcher 主程序更新")
-    
+    g.add_argument("--sync", action="store_true", help="对照远端 packages/ 清理 index.json 中失效条目")
+
     parser.add_argument("--build", action="store_true", help="编译 launcher 为可执行二进制（配合 --launcher）")
-    parser.add_argument("--dry-run", action="store_true", help="只打包不上传（测试打包）")
+    parser.add_argument("--dry-run", action="store_true", help="只打包不上传（测试打包）；--sync 时只预览不写远端")
+    parser.add_argument("--yes", "-y", action="store_true", help="跳过交互确认（配合 --sync）")
     parser.add_argument("--changelog", type=str, default="", help="launcher 更新说明（配合 --launcher 使用）")
     return parser.parse_args()
 
@@ -420,6 +533,10 @@ def main():
             build=args.build,
         )
         sys.exit(0 if ok else 4)
+
+    if args.sync:
+        ok = sync_remote(dry_run=args.dry_run, yes=args.yes)
+        sys.exit(0 if ok else 5)
 
     # 核心改动：支持 --group 参数
     has_filter = any([args.app_dir, args.all, args.system, args.user, args.group, args.list])

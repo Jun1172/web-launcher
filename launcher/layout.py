@@ -25,8 +25,8 @@ def load_layout():
         return {}
 
 
-def save_layout(dock, hidden):
-    """原子写 layout.json。dock/hidden 为 list[str]；None 表示保留旧值。
+def save_layout(dock=None, hidden=None, theme=None, layout=None):
+    """原子写 layout.json。dock/hidden 为 list[str]，theme/layout 为 str；None 表示保留旧值。
 
     返回写入后的完整 dict。
     """
@@ -35,6 +35,10 @@ def save_layout(dock, hidden):
         cur["dock"] = [str(x) for x in dock if x]
     if hidden is not None:
         cur["hidden"] = [str(x) for x in hidden if x]
+    if theme is not None:
+        cur["theme"] = str(theme)
+    if layout is not None:
+        cur["layout"] = str(layout)
     cur["version"] = 1
     tmp = LAYOUT_JSON.with_suffix(".json.tmp.new")
     tmp.write_bytes(json.dumps(cur, ensure_ascii=False, indent=2).encode("utf-8"))

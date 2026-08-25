@@ -1,0 +1,278 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="__THEME__"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>__TITLE__</title>
+<style>
+__SHARED_CSS__
+
+/* ══════════════ 侧边栏式布局专属样式 ══════════════ */
+
+/* 覆盖 #home 默认纵向布局为左右分栏 */
+#home { flex-direction: row; padding: 60px 0 0; gap: 0; }
+
+/* ── 左侧侧边栏 ── */
+#sideBar {
+    flex: 0 0 260px;
+    height: 100%;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid var(--glass-border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+}
+
+/* 顶部 logo / 标题区 */
+.sideHead {
+    flex: 0 0 auto;
+    padding: 18px 18px 16px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--glass-border);
+}
+.sideLogo {
+    width: 40px; height: 40px; border-radius: 12px;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 4px 12px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+.sideTitle {
+    font-size: 15px; font-weight: 600; color: var(--text-primary);
+    letter-spacing: 0.5px; line-height: 1.2;
+}
+.sideTitle small {
+    display: block; font-size: 11px; font-weight: 400;
+    color: var(--text-secondary); margin-top: 3px; letter-spacing: 0;
+}
+
+/* 应用列表（垂直滚动） */
+#sideList {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    padding: 6px 0 14px;
+}
+.sideSection { padding: 4px 0; }
+.sideSection + .sideSection {
+    border-top: 1px solid var(--glass-border);
+    margin-top: 4px; padding-top: 4px;
+}
+.sideSectionLabel {
+    font-size: 11px; color: var(--text-secondary);
+    padding: 10px 20px 6px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+}
+
+/* 每个应用项（class="icon" 供 _shared.js 全局 click 委托识别） */
+.icon {
+    position: relative;
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 18px 9px 20px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+.icon:hover { background: var(--glass-bg-hover); }
+.icon:active { background: var(--glass-border-hover); }
+
+/* 图标盒 36x36 */
+.icon .sideIcon {
+    position: relative;
+    flex: 0 0 36px;
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.icon:hover .sideIcon {
+    transform: scale(1.08);
+    border-color: var(--glass-border-hover);
+}
+/* 系统应用角标 */
+.icon.system .sideIcon::after {
+    content: ""; position: absolute; top: -2px; right: -2px;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
+    z-index: 2;
+}
+
+.icon .sideName {
+    flex: 1; min-width: 0;
+    font-size: 14px; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-weight: 500; letter-spacing: 0.3px;
+}
+
+/* 运行中：左侧高亮条 */
+.icon.running::before {
+    content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
+    width: 3px; border-radius: 0 3px 3px 0;
+    background: var(--success);
+    box-shadow: 0 0 10px var(--success);
+}
+.icon.running { background: rgba(52, 211, 153, 0.08); }
+.icon.running .sideIcon { border-color: var(--success); }
+
+/* ── 右侧大区 ── */
+#mainArea {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px 40px;
+    overflow: hidden;
+}
+#cw { text-align: center; max-width: 640px; }
+#cwGreeting {
+    font-size: 16px; color: var(--text-secondary);
+    margin-bottom: 14px; font-weight: 500; letter-spacing: 1px;
+}
+#cwTime {
+    font-size: 96px; font-weight: 200; letter-spacing: -3px; line-height: 1;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(to bottom, var(--clock-gradient-top) 0%, var(--clock-gradient-bottom) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.2));
+}
+#cwDate {
+    font-size: 16px; color: var(--text-secondary);
+    margin-top: 16px; font-weight: 500;
+}
+.cwHint {
+    font-size: 13px; color: var(--text-secondary);
+    margin-top: 44px; opacity: 0.65;
+    letter-spacing: 0.5px;
+}
+
+/* 最近任务卡片里的 .tile/.name（_shared.js renderRecents 依赖） */
+.tile {
+    width: 64px; height: 64px; border-radius: var(--tile-radius);
+    font-size: 32px; display: flex; align-items: center; justify-content: center;
+    background: var(--glass-bg); border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.name {
+    font-size: 14px; color: var(--text-primary); font-weight: 500;
+    text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+</style>
+__THEME_BLOCKS__
+</head><body>
+
+<div id="statusbar">
+  <span id="sbTime" style="font-variant-numeric: tabular-nums;">--:--</span>
+  <span class="sbR">
+    <button id="layoutBtn" title="布局编辑">🗂️</button>
+    <svg id="netIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path class="arc" d="M2 8.5C5 5.9 8.4 4.5 12 4.5s7 1.4 10 4"/>
+      <path class="arc" d="M5.5 12.5c2-1.8 4.2-2.7 6.5-2.7s4.5.9 6.5 2.7"/>
+      <path class="arc" d="M9 16.3c1-.9 2-1.3 3-1.3s2 .4 3 1.3"/>
+      <circle cx="12" cy="19.5" r="1.8" fill="currentColor" stroke="none"/>
+      <path class="slash" d="M4 4l16 16"/>
+    </svg>
+    <span id="batt"><i id="battFill"></i><b></b></span><span id="battPct" style="font-size:11px;margin-left:4px;color:var(--text-secondary);font-variant-numeric:tabular-nums;"></span>
+  </span>
+</div>
+
+<div id="home">
+  <!-- 左侧侧边栏 -->
+  <div id="sideBar">
+    <div class="sideHead">
+      <div class="sideLogo">🚀</div>
+      <div class="sideTitle">应用启动器<small>Launcher</small></div>
+    </div>
+    <div id="sideList"></div>
+  </div>
+  <!-- 右侧大区：居中大时钟 -->
+  <div id="mainArea">
+    <div id="cw">
+      <div id="cwGreeting">欢迎使用</div>
+      <div id="cwTime">--:--</div>
+      <div id="cwDate"></div>
+      <div class="cwHint">从左侧选择应用</div>
+    </div>
+  </div>
+</div>
+
+<!-- 最近任务面板 -->
+<div id="recents" class="panel">
+  <div class="pHead"><span>最近任务</span>
+    <span><button id="clearAll">全部清除</button><button id="closeR">▼ 收起</button></span></div>
+  <div id="rCards"></div>
+  <div class="rTip">上滑卡片清除单个 · 空白处下滑关闭 · 点击卡片回到应用</div>
+</div>
+
+<!-- 布局编辑模态 -->
+<div id="layoutMask" class="modalMask">
+  <div class="modal" role="dialog" aria-label="布局编辑">
+    <h2>🗂️ 布局编辑</h2>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6">
+      切换桌面布局风格与配色；勾选 <b style="color:var(--text-primary)">Dock</b> 常驻侧栏置顶，勾选 <b style="color:var(--danger)">隐藏</b> 从桌面移除。修改后保存即时生效。
+    </div>
+    <div class="layoutRow">
+      <div class="themeLabel">📐 布局风格</div>
+      <div id="layoutPicker" class="layoutList"></div>
+    </div>
+    <div class="themeRow">
+      <div class="themeLabel">🎨 桌面风格</div>
+      <div id="themeList" class="themeList"></div>
+    </div>
+    <div id="layList" class="layList"></div>
+    <div class="foot">
+      <button class="btnDef" onclick="closeLayout()">取消</button>
+      <button class="btnPri" onclick="saveLayout()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="pages"></div>
+<div id="homeBar"></div>
+
+<script>
+__SHARED_JS__
+</script>
+<script>
+/* ══════════════ 侧边栏式布局专属 JS ══════════════ */
+
+function buildHome(){
+  const list=$('sideList');
+  list.innerHTML='';
+
+  const dockApps=APPS.filter(a=>a.dock);
+  const homeApps=APPS.filter(a=>!a.dock);
+
+  if(dockApps.length){
+    const sec=document.createElement('div');
+    sec.className='sideSection';
+    sec.innerHTML='<div class="sideSectionLabel">置顶</div>';
+    dockApps.forEach(a=>sec.appendChild(sideItem(a)));
+    list.appendChild(sec);
+  }
+
+  if(homeApps.length){
+    const sec=document.createElement('div');
+    sec.className='sideSection';
+    sec.innerHTML='<div class="sideSectionLabel">全部应用</div>';
+    homeApps.forEach(a=>sec.appendChild(sideItem(a)));
+    list.appendChild(sec);
+  }
+
+  if(typeof updateDots==='function')updateDots();
+}
+
+function sideItem(a){
+  const d=document.createElement('div');
+  d.className='icon'+(a.system?' system':'');
+  d.dataset.id=a.id;
+  d.innerHTML=
+    '<div class="sideIcon" style="--c:'+a.color+'">'+a.icon+'</div>'+
+    '<div class="sideName">'+esc(a.name)+'</div>';
+  return d;
+}
+
+function updateDots(){
+  const run={};
+  APPS.forEach(a=>run[a.id]=a.running);
+  document.querySelectorAll('#sideList .icon').forEach(el=>{
+    el.classList.toggle('running',!!run[el.dataset.id]);
+  });
+}
+</script></body></html>

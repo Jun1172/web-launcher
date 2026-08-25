@@ -1,0 +1,235 @@
+/* _shared.css - 跨布局通用样式（重置/状态栏/最近任务/模态/页面/Toast）
+   布局专属样式（图标/网格/Dock/大时钟）由各 layouts/*.html 自行定义 */
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; overflow:hidden; }
+body {
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--text-primary);
+    user-select: none;
+    background-color: var(--bg-base);
+    background-image:
+        radial-gradient(at 0% 0%, var(--bg-aurora-1) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, var(--bg-aurora-2) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, var(--bg-aurora-3) 0px, transparent 50%),
+        radial-gradient(at 0% 100%, var(--bg-aurora-4) 0px, transparent 50%);
+    background-size: 200% 200%;
+    animation: aurora 25s ease infinite;
+    transition: background-color 0.4s ease, color 0.4s ease;
+}
+@keyframes aurora {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+*:hover::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-hover); }
+
+/* ── 顶部状态栏 ── */
+#statusbar {
+    position:fixed; top:0; left:0; right:0; height:32px; z-index:90;
+    display:flex; justify-content:space-between; align-items:center; padding:0 24px;
+    font-size:12.5px; font-weight:500; pointer-events:auto;
+    padding-right:12px;
+    background: var(--statusbar-bg);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--glass-border);
+}
+.sbR { display:flex; align-items:center; gap:12px; }
+
+#layoutBtn {
+    background:transparent; border:1px solid transparent; color:var(--text-primary);
+    cursor:pointer; font-size:14px; padding:4px 8px; border-radius:6px; transition:all 0.2s ease;
+}
+#layoutBtn:hover { background:var(--glass-bg-hover); border-color:var(--glass-border-hover); }
+
+#netIcon { width:15px; height:15px; color:var(--text-secondary); }
+#netIcon .slash { display:none; }
+#netIcon.off .slash { display:block; }
+#netIcon.off .arc { opacity:0.3; }
+
+#batt { width:22px; height:11px; border:1.5px solid var(--text-secondary); border-radius:3px; position:relative; }
+#batt i { position:absolute; inset:1.5px; background:var(--success); border-radius:1.5px; transition:width 0.3s ease; }
+#batt b { position:absolute; right:-4px; top:2px; width:2px; height:5px; background:var(--text-secondary); border-radius:1px; }
+
+/* ── 主桌面容器（基础；内部结构由布局定义） ── */
+#home {
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    padding:60px 0 0; transition:transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s, filter 0.35s;
+    touch-action:none;
+}
+#home.dim { opacity:0; transform:scale(1.05); pointer-events:none; filter:blur(10px); }
+
+/* ── 最近任务面板 ── */
+.panel {
+    position:fixed; inset:0; z-index:60;
+    background: var(--panel-bg);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    transform:translateY(100%); transition:transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+    display:flex; flex-direction:column; padding:48px 0 24px;
+    border-top: 1px solid var(--glass-border);
+}
+.panel.show { transform:translateY(0); }
+.pHead { display:flex; justify-content:space-between; align-items:center; padding:0 28px 16px; font-size:15px; font-weight:600; }
+.pHead span { display:flex; gap:10px; }
+.pHead button {
+    background:var(--glass-bg); border:1px solid var(--glass-border); color:var(--text-primary);
+    border-radius:8px; padding:6px 14px; cursor:pointer; font-size:12px; transition:all 0.2s;
+}
+.pHead button:hover { background:var(--glass-bg-hover); border-color:var(--glass-border-hover); }
+
+#rCards { flex:1; display:flex; gap:24px; overflow-x:auto; padding:10px 28px; align-items:center; touch-action:pan-x; }
+.card {
+    position:relative; flex:0 0 160px; height:220px; border-radius:22px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    cursor:pointer; transition:all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); touch-action:none;
+    overflow: hidden;
+}
+.card::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    transform: skewX(-25deg); transition: left 0.6s;
+}
+.card:hover::before { left: 150%; }
+.card:hover { background: var(--glass-bg-hover); transform: translateY(-4px); border-color: var(--glass-border-hover); }
+.card.fadeOut { opacity:0; transform:translateY(-80px) scale(0.85)!important; pointer-events:none; }
+.card .x {
+    position:absolute; top:12px; right:14px; background:none; border:none; color:var(--text-secondary);
+    font-size:18px; cursor:pointer; transition:all 0.2s; z-index: 2;
+}
+.card .x:hover { color:var(--danger); transform: scale(1.1); }
+.card .st { font-size:12px; color:var(--text-secondary); }
+.rTip { text-align:center; color:var(--text-secondary); font-size:13px; padding-top:20px; }
+.rEmpty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:15px; }
+
+/* ── 应用页面 ── */
+.page {
+    position:absolute; inset:0; background:var(--page-bg); display:none; flex-direction:column;
+    z-index:40; padding-top:32px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.page.show { display:flex; animation:op 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes op { from { transform:scale(0.96) translateY(10px); opacity:0; } }
+.bar {
+    height:46px; background:rgba(255,255,255,0.04); color:var(--text-primary);
+    display:flex; align-items:center; justify-content:space-between; padding:0 18px;
+    font-size:14px; font-weight:500; border-bottom: 1px solid var(--glass-border);
+}
+.bar button {
+    background:transparent; border:1px solid var(--glass-border); color:var(--text-primary);
+    font-size:13px; cursor:pointer; padding:6px 12px; border-radius:8px; transition:all 0.2s;
+}
+.bar button:hover { background:var(--glass-bg-hover); border-color:var(--glass-border-hover); }
+.page iframe { flex:1; border:0; width:100%; background: #fff; }
+.loading {
+    flex:1; display:flex; align-items:center; justify-content:center;
+    color:var(--text-secondary); font-size:15px;
+    animation: blink 1.5s ease-in-out infinite;
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.gz { position:absolute; left:0; right:0; bottom:0; height:16px; z-index:5; }
+
+#homeBar {
+    position:fixed; left:50%; bottom:14px; transform:translateX(-50%);
+    width:130px; height:5px; border-radius:3px;
+    background: var(--homebar-bg);
+    z-index:99; cursor:pointer; transition:all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#homeBar:hover { background: var(--homebar-hover-bg); width: 150px; box-shadow: 0 0 12px var(--homebar-glow); }
+
+/* ── 模态 ── */
+.modalMask {
+    position:fixed; inset:0; z-index:200;
+    background: var(--modal-mask-bg);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    display:none; align-items:center; justify-content:center; padding:24px;
+}
+.modalMask.show { display:flex; animation:fade 0.25s ease; }
+@keyframes fade { from { opacity:0; } }
+.modal {
+    width:min(540px,92vw); max-height:86vh;
+    background: var(--modal-bg);
+    backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
+    padding:26px;
+    display:flex; flex-direction:column; gap:18px;
+    color:var(--text-primary);
+    box-shadow: var(--modal-shadow), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.modal h2 { font-size:19px; font-weight:600; display:flex; align-items:center; gap:12px; }
+.modal .ver { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--text-secondary); font-variant-numeric: tabular-nums; }
+.modal .logoRow { display:flex; gap:18px; align-items:center; }
+.modal .logoBig {
+    width:60px; height:60px; border-radius:16px; font-size:30px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--glass-border);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.modal .cl {
+    background:rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius:12px;
+    padding:14px 18px;
+    max-height:260px; overflow:auto;
+    font-size:13px; line-height:1.7;
+    color: var(--text-secondary);
+}
+.modal .cl ul { padding-left:18px; }
+.modal .foot { display:flex; justify-content:flex-end; gap:12px; margin-top:auto; }
+.modal button { padding:9px 18px; border-radius:10px; border:0; cursor:pointer; font-size:13px; font-weight:600; transition:all 0.2s; }
+.btnPri { background: var(--accent); color: #fff; box-shadow: 0 4px 12px var(--accent-glow); }
+.btnPri:hover { background: #6366f1; transform:translateY(-1px); box-shadow: 0 6px 16px var(--accent-glow); }
+.btnDef { background: transparent; color: var(--text-secondary); border: 1px solid var(--glass-border); }
+.btnDef:hover { background:var(--glass-bg-hover); color:var(--text-primary); border-color:var(--glass-border-hover); }
+.updHint { padding:14px; border-radius:12px; font-size:13px; line-height:1.6; border:1px solid transparent; }
+.updHint.ok { background:rgba(52, 211, 153, 0.1); color:var(--success); border-color:rgba(52, 211, 153, 0.2); }
+.updHint.up { background:rgba(248, 113, 113, 0.1); color:var(--danger); border-color:rgba(248, 113, 113, 0.2); }
+
+/* ── 布局编辑列表 ── */
+.layList { display:flex; flex-direction:column; gap:8px; max-height:48vh; overflow:auto; padding-right:6px; }
+.layRow { display:flex; align-items:center; gap:14px; padding:10px 14px;
+    background: var(--layrow-bg); border:1px solid var(--glass-border); border-radius:12px; }
+.layRow .ic { font-size:22px; line-height:1; }
+.layRow .nm { flex:1; font-size:14px; font-weight:500; }
+.layRow .nm small { color:var(--accent); margin-left:6px; font-size:11px; font-weight:400; }
+.layRow .cb { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; }
+.layRow input[type=checkbox] { width:18px; height:18px; accent-color:var(--accent); cursor:pointer; margin:0; }
+.layRow .hideLbl input:checked + span { color:var(--danger); }
+
+/* ── 风格切换通用（主题/布局） ── */
+.themeRow, .layoutRow { display:flex; flex-direction:column; gap:10px; }
+.themeLabel { font-size:13px; color:var(--text-secondary); font-weight:500; }
+.themeList, .layoutList { display:flex; gap:10px; flex-wrap:wrap; }
+.themeBtn, .layoutBtn {
+    flex:1; min-width:100px; padding:10px 14px; border-radius:12px; cursor:pointer;
+    background: var(--glass-bg); border:1px solid var(--glass-border);
+    color: var(--text-primary); font-size:13px; font-weight:500;
+    transition: all 0.2s; display:flex; align-items:center; gap:8px; justify-content:center;
+}
+.themeBtn:hover, .layoutBtn:hover { background: var(--glass-bg-hover); border-color: var(--glass-border-hover); }
+.themeBtn.active, .layoutBtn.active { background: var(--accent); border-color: var(--accent); color:#fff; box-shadow: 0 4px 12px var(--accent-glow); }
+.themeBtn .sw { width:14px; height:14px; border-radius:4px; border:1px solid rgba(255,255,255,0.3); flex:0 0 14px; }
+
+/* ── Toast ── */
+.__toast {
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:9999;
+    padding:12px 22px;
+    background: var(--toast-bg);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    border-radius:14px;
+    font-size:14px; font-weight:500;
+    box-shadow: var(--toast-shadow);
+    animation:fade 0.15s, pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes pop { from { transform:translate(-50%,-50%) scale(0.9); opacity:0; } }

@@ -1,0 +1,248 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="__THEME__"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>__TITLE__</title>
+<style>
+__SHARED_CSS__
+
+/* ══════════════ 列表式布局专属样式 ══════════════ */
+
+/* 顶部大时钟与问候区（复用 grid 风格，但更紧凑） */
+#cw { text-align:center; margin:18px 0 28px; padding:0 20px; flex:0 0 auto; }
+#cwGreeting { font-size:16px; color:var(--text-secondary); margin-bottom:8px; font-weight:500; letter-spacing:1px; }
+#cwTime {
+    font-size:76px; font-weight:200; letter-spacing:-2px; line-height:1;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(to bottom, var(--clock-gradient-top) 0%, var(--clock-gradient-bottom) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.2));
+}
+#cwDate { font-size:15px; color:var(--text-secondary); margin-top:10px; font-weight:500; }
+
+/* 列表容器：可垂直滚动 */
+#appList {
+    flex:1 1 auto; overflow-y:auto; overflow-x:hidden;
+    padding:0 28px; margin-bottom:8px;
+    display:flex; flex-direction:column;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* 列表行：图标(56x56) + 名称(大) + 状态描述(小,灰) + 行间分隔线 + hover 高亮 */
+#appList .icon {
+    display:flex; align-items:center; gap:18px;
+    padding:14px 16px; cursor:pointer; position:relative;
+    border-bottom: 1px solid var(--glass-border);
+    transition: background 0.2s ease;
+}
+#appList .icon:last-child { border-bottom: none; }
+#appList .icon:hover { background: var(--glass-bg-hover); }
+#appList .icon:active { background: var(--glass-bg); }
+
+#appList .tile {
+    position:relative; width:56px; height:56px;
+    border-radius:var(--tile-radius); font-size:26px;
+    display:flex; align-items:center; justify-content:center;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--tile-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    overflow: hidden; flex:0 0 56px;
+}
+#appList .icon:hover .tile {
+    transform: scale(1.06);
+    box-shadow: var(--tile-shadow-hover);
+}
+#appList .icon:active .tile { transform: scale(0.96); transition: transform 0.1s; }
+
+#appList .rowText { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:4px; }
+#appList .name {
+    font-size:18px; font-weight:600; color:var(--text-primary);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    letter-spacing: 0.3px;
+}
+#appList .desc {
+    font-size:12px; color:var(--text-secondary); font-weight:400;
+    display:flex; align-items:center; gap:8px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+#appList .desc .runningTag { color:var(--success); font-weight:500; }
+#appList .desc .sysTag { color:var(--accent); }
+#appList .desc .sep { opacity:0.4; }
+
+/* 图标 hover 微光扫过（与 grid 保持一致） */
+.tile::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: skewX(-25deg); transition: left 0.5s;
+}
+.icon:hover .tile::before { left: 150%; }
+
+/* 运行指示点：贴在图标右下角 */
+#appList .tile.running::after {
+    content:""; position:absolute; bottom:-2px; right:-2px;
+    width:10px; height:10px; border-radius:50%; background:var(--success);
+    box-shadow: 0 0 8px var(--success), 0 0 0 2px var(--bg-base);
+}
+/* 系统标记：贴在图标右上角 */
+#appList .tile.system::before {
+    content:""; position:absolute; top:3px; right:3px; width:5px; height:5px; border-radius:50%;
+    background:var(--accent); box-shadow: 0 0 8px var(--accent-glow); z-index:2;
+}
+
+/* 🌟 紧凑版 Dock 栏（仅图标，无名称） */
+#dock {
+    flex:0 0 auto;
+    margin:0 auto 36px;
+    height:64px; border-radius:var(--dock-radius);
+    background: var(--dock-bg);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--dock-border);
+    box-shadow: var(--dock-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    display:flex; align-items:center; justify-content:center; gap: 14px;
+    padding: 0 18px;
+    max-width: 90%;
+}
+#dock .icon { width:auto; display:flex; padding:0; border-bottom:none; }
+#dock .tile { width:40px; height:40px; font-size:20px; border-radius:12px; }
+#dock .icon:hover .tile { transform: translateY(-6px) scale(1.18); }
+#dock .icon:active .tile { transform: scale(0.95); transition: transform 0.1s; }
+#dock .icon .name { display:none; }
+#dock .tile.running::after {
+    content:""; position:absolute; bottom:-2px; right:-2px;
+    width:7px; height:7px; border-radius:50%; background:var(--success);
+    box-shadow: 0 0 6px var(--success), 0 0 0 1.5px var(--bg-base);
+}
+#dock .tile.system::before {
+    content:""; position:absolute; top:2px; right:2px; width:4px; height:4px; border-radius:50%;
+    background:var(--accent); box-shadow: 0 0 6px var(--accent-glow); z-index:2;
+}
+</style>
+__THEME_BLOCKS__
+</head><body>
+
+<div id="statusbar">
+  <span id="sbTime" style="font-variant-numeric: tabular-nums;">--:--</span>
+  <span class="sbR">
+    <button id="layoutBtn" title="布局编辑">🗂️</button>
+    <svg id="netIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path class="arc" d="M2 8.5C5 5.9 8.4 4.5 12 4.5s7 1.4 10 4"/>
+      <path class="arc" d="M5.5 12.5c2-1.8 4.2-2.7 6.5-2.7s4.5.9 6.5 2.7"/>
+      <path class="arc" d="M9 16.3c1-.9 2-1.3 3-1.3s2 .4 3 1.3"/>
+      <circle cx="12" cy="19.5" r="1.8" fill="currentColor" stroke="none"/>
+      <path class="slash" d="M4 4l16 16"/>
+    </svg>
+    <span id="batt"><i id="battFill"></i><b></b></span><span id="battPct" style="font-size:11px;margin-left:4px;color:var(--text-secondary);font-variant-numeric:tabular-nums;"></span>
+  </span>
+</div>
+
+<div id="home">
+  <div id="cw">
+    <div id="cwGreeting">欢迎使用</div>
+    <div id="cwTime">--:--</div>
+    <div id="cwDate"></div>
+  </div>
+  <div id="appList"></div>
+  <div id="dock"></div>
+</div>
+
+<!-- 最近任务面板 -->
+<div id="recents" class="panel">
+  <div class="pHead"><span>最近任务</span>
+    <span><button id="clearAll">全部清除</button><button id="closeR">▼ 收起</button></span></div>
+  <div id="rCards"></div>
+  <div class="rTip">上滑卡片清除单个 · 空白处下滑关闭 · 点击卡片回到应用</div>
+</div>
+
+<!-- 布局编辑模态 -->
+<div id="layoutMask" class="modalMask">
+  <div class="modal" role="dialog" aria-label="布局编辑">
+    <h2>🗂️ 布局编辑</h2>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6">
+      切换桌面布局风格与配色；勾选 <b style="color:var(--text-primary)">Dock</b> 常驻底部，勾选 <b style="color:var(--danger)">隐藏</b> 从桌面移除。修改后保存即时生效。
+    </div>
+    <div class="layoutRow">
+      <div class="themeLabel">📐 布局风格</div>
+      <div id="layoutPicker" class="layoutList"></div>
+    </div>
+    <div class="themeRow">
+      <div class="themeLabel">🎨 桌面风格</div>
+      <div id="themeList" class="themeList"></div>
+    </div>
+    <div id="layList" class="layList"></div>
+    <div class="foot">
+      <button class="btnDef" onclick="closeLayout()">取消</button>
+      <button class="btnPri" onclick="saveLayout()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="pages"></div>
+<div id="homeBar"></div>
+
+<script>
+__SHARED_JS__
+</script>
+<script>
+/* ══════════════ 列表式布局专属 JS ══════════════ */
+
+function buildHome(){
+  const list=$('appList');
+  list.innerHTML='';
+  APPS.filter(a=>!a.dock).forEach(a=>list.appendChild(rowEl(a)));
+
+  const dk=$('dock');dk.innerHTML='';
+  APPS.filter(a=>a.dock).forEach(a=>dk.appendChild(dockEl(a)));
+
+  updateDots();
+}
+
+/* 构造列表行：方形图标 + 名称(大) + 状态描述(小,灰) */
+function rowEl(a){
+  const d=document.createElement('div');
+  d.className='icon'; d.dataset.id=a.id;
+  const tileCls=a.system?'tile system':'tile';
+  d.innerHTML=
+    '<div class="'+tileCls+'" style="--c:'+a.color+'">'+a.icon+'</div>'+
+    '<div class="rowText">'+
+      '<div class="name">'+esc(a.name)+'</div>'+
+      '<div class="desc">'+descHtml(a)+'</div>'+
+    '</div>';
+  return d;
+}
+
+/* 构造 Dock 项：仅小图标 */
+function dockEl(a){
+  const d=document.createElement('div');
+  d.className='icon'; d.dataset.id=a.id;
+  const tileCls=a.system?'tile system':'tile';
+  d.innerHTML='<div class="'+tileCls+'" style="--c:'+a.color+'">'+a.icon+'</div>';
+  return d;
+}
+
+/* 状态描述：运行状态 + 系统标记 + 端口 */
+function descHtml(a){
+  const parts=[];
+  parts.push(a.running
+    ?'<span class="runningTag">● 运行中</span>'
+    :'<span>未运行</span>');
+  if(a.system) parts.push('<span class="sysTag">系统应用</span>');
+  if(a.port!=null) parts.push('<span>端口 :'+esc(String(a.port))+'</span>');
+  return parts.join('<span class="sep">·</span>');
+}
+
+/* 更新运行状态指示器 */
+function updateDots(){
+  const run={};APPS.forEach(a=>run[a.id]=a.running);
+  document.querySelectorAll('.icon').forEach(el=>{
+    const tile=el.querySelector('.tile'); if(!tile)return;
+    const a=APPS.find(x=>x.id===el.dataset.id); if(!a)return;
+    tile.classList.toggle('running',!!a.running);
+    tile.classList.toggle('system',!!a.system);
+    const desc=el.querySelector('.desc');
+    if(desc && el.closest('#appList')) desc.innerHTML=descHtml(a);
+  });
+}
+
+addEventListener('resize',()=>{ if(typeof buildHome==='function')buildHome(); });
+</script></body></html>

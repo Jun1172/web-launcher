@@ -1,0 +1,192 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="__THEME__"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>__TITLE__</title>
+<style>
+__SHARED_CSS__
+
+/* ══════════════ 磁贴式布局专属样式（Win8 Metro 风） ══════════════ */
+
+/* 顶部小时钟问候区（比九宫格更紧凑，让磁贴占主） */
+#cw { text-align:center; padding:4px 20px 14px; flex-shrink:0; }
+#cwGreeting { font-size:13px; color:var(--text-secondary); margin-bottom:4px; font-weight:500; letter-spacing:0.5px; }
+#cwTime {
+    font-size:38px; font-weight:300; letter-spacing:-1px; line-height:1;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(to bottom, var(--clock-gradient-top) 0%, var(--clock-gradient-bottom) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.15));
+}
+#cwDate { font-size:12px; color:var(--text-secondary); margin-top:5px; font-weight:500; }
+
+/* 磁贴网格容器：CSS grid，可垂直滚动 */
+#tiles {
+    flex:1; overflow-y:auto; overflow-x:hidden;
+    display:grid;
+    grid-template-columns: repeat(auto-fill, 120px);
+    grid-auto-rows: 120px;
+    gap:6px;
+    justify-content:center;
+    align-content:start;
+    padding:8px 24px 80px;
+    touch-action:pan-y;
+}
+
+/* 磁贴基类：彩色背景 + 居中图标 + 底部白色名称
+   .icon 既是网格 item，也是点击委托目标（_shared.js 依赖 class=.icon + data-id） */
+.icon {
+    position:relative; overflow:hidden; cursor:pointer;
+    background: var(--c, #555);
+    border-radius:6px;
+    color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease;
+    user-select:none;
+}
+/* 大磁贴 2x2：dock 应用（≈240x240） */
+.icon.lg { grid-row:span 2; grid-column:span 2; border-radius:10px; }
+/* 中磁贴 2x1：系统应用（横向 ≈240x120） */
+.icon.md { grid-column:span 2; }
+
+/* 居中大图标 */
+.icon .ic {
+    font-size:34px; line-height:1;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));
+    pointer-events:none;
+}
+.icon.lg .ic { font-size:72px; }
+.icon.md .ic { font-size:46px; }
+
+/* 底部白色名称 */
+.icon .name {
+    position:absolute; left:10px; right:10px; bottom:7px;
+    font-size:12px; color:#fff; font-weight:500;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    text-align:center;
+    pointer-events:none;
+}
+.icon.lg .name { font-size:15px; left:14px; right:14px; bottom:14px; }
+
+/* hover：轻微上浮 + 加深阴影 */
+.icon:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.28);
+    z-index:2;
+}
+.icon:active { transform: scale(0.97); transition: transform 0.08s; }
+
+/* 运行中：右上角小白点 */
+.icon.running::after {
+    content:""; position:absolute; top:8px; right:8px;
+    width:8px; height:8px; border-radius:50%;
+    background:#fff; box-shadow: 0 0 8px rgba(255,255,255,0.9);
+    z-index:3;
+}
+.icon.lg.running::after { width:11px; height:11px; top:12px; right:12px; }
+</style>
+__THEME_BLOCKS__
+</head><body>
+
+<div id="statusbar">
+  <span id="sbTime" style="font-variant-numeric: tabular-nums;">--:--</span>
+  <span class="sbR">
+    <button id="layoutBtn" title="布局编辑">🗂️</button>
+    <svg id="netIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path class="arc" d="M2 8.5C5 5.9 8.4 4.5 12 4.5s7 1.4 10 4"/>
+      <path class="arc" d="M5.5 12.5c2-1.8 4.2-2.7 6.5-2.7s4.5.9 6.5 2.7"/>
+      <path class="arc" d="M9 16.3c1-.9 2-1.3 3-1.3s2 .4 3 1.3"/>
+      <circle cx="12" cy="19.5" r="1.8" fill="currentColor" stroke="none"/>
+      <path class="slash" d="M4 4l16 16"/>
+    </svg>
+    <span id="batt"><i id="battFill"></i><b></b></span><span id="battPct" style="font-size:11px;margin-left:4px;color:var(--text-secondary);font-variant-numeric:tabular-nums;"></span>
+  </span>
+</div>
+
+<div id="home">
+  <div id="cw">
+    <div id="cwGreeting">欢迎使用</div>
+    <div id="cwTime">--:--</div>
+    <div id="cwDate"></div>
+  </div>
+  <div id="tiles"></div>
+</div>
+
+<!-- 最近任务面板 -->
+<div id="recents" class="panel">
+  <div class="pHead"><span>最近任务</span>
+    <span><button id="clearAll">全部清除</button><button id="closeR">▼ 收起</button></span></div>
+  <div id="rCards"></div>
+  <div class="rTip">上滑卡片清除单个 · 空白处下滑关闭 · 点击卡片回到应用</div>
+</div>
+
+<!-- 布局编辑模态 -->
+<div id="layoutMask" class="modalMask">
+  <div class="modal" role="dialog" aria-label="布局编辑">
+    <h2>🗂️ 布局编辑</h2>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6">
+      切换桌面布局风格与配色；勾选 <b style="color:var(--text-primary)">Dock</b> 常驻顶部为大磁贴，勾选 <b style="color:var(--danger)">隐藏</b> 从桌面移除。修改后保存即时生效。
+    </div>
+    <div class="layoutRow">
+      <div class="themeLabel">📐 布局风格</div>
+      <div id="layoutPicker" class="layoutList"></div>
+    </div>
+    <div class="themeRow">
+      <div class="themeLabel">🎨 桌面风格</div>
+      <div id="themeList" class="themeList"></div>
+    </div>
+    <div id="layList" class="layList"></div>
+    <div class="foot">
+      <button class="btnDef" onclick="closeLayout()">取消</button>
+      <button class="btnPri" onclick="saveLayout()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="pages"></div>
+<div id="homeBar"></div>
+
+<script>
+__SHARED_JS__
+</script>
+<script>
+/* ══════════════ 磁贴式布局专属 JS ══════════════ */
+
+/* 根据 APPS 渲染磁贴：
+   - dock 应用 → 大磁贴 2x2（置顶）
+   - 系统应用 → 中磁贴 2x1（横向）
+   - 普通应用 → 小磁贴 1x1
+   _shared.js 在 poll().then() 后会自动调用 buildHome()。 */
+function buildHome(){
+  const box=$('tiles'); if(!box)return;
+  box.innerHTML='';
+
+  APPS.filter(a=>a.dock).forEach(a=>box.appendChild(tileEl(a,'lg')));
+  APPS.filter(a=>a.system && !a.dock).forEach(a=>box.appendChild(tileEl(a,'md')));
+  APPS.filter(a=>!a.dock && !a.system).forEach(a=>box.appendChild(tileEl(a,'')));
+
+  if(typeof updateDots==='function')updateDots();
+}
+
+/* 构造单个磁贴：class="icon[ lg|md]" data-id=应用id，inline 设置 --c 为应用 color */
+function tileEl(a, size){
+  const d=document.createElement('div');
+  d.className='icon'+(size?(' '+size):'');
+  d.dataset.id=a.id;
+  d.style.setProperty('--c', a.color||'#555');
+  if(a.system)d.classList.add('system');
+  d.innerHTML='<span class="ic">'+a.icon+'</span><span class="name">'+esc(a.name)+'</span>';
+  return d;
+}
+
+/* 运行状态：给运行中磁贴加 .running 类（右上角小白点） */
+function updateDots(){
+  const run={};APPS.forEach(a=>run[a.id]=a.running);
+  document.querySelectorAll('#tiles .icon').forEach(el=>{
+    el.classList.toggle('running',!!run[el.dataset.id]);
+  });
+}
+
+/* 窗口尺寸变化时重建（保持网格列数自适应） */
+addEventListener('resize',()=>{ if(typeof buildHome==='function')buildHome(); });
+</script></body></html>

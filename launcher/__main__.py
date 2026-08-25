@@ -108,15 +108,21 @@ def _start_http_server(server):
 def main():
     _redirect_stdout_if_needed()
 
-    # 1. 尝试导入 pywebview；未安装则回退到纯 HTTP 模式
-    try:
-        import webview
-        has_webview = True
-    except ImportError:
+    # 1. 尝试导入 pywebview；未安装或 LAUNCHER_HTTP_ONLY 设置则回退到纯 HTTP 模式
+    import os
+    if os.environ.get("LAUNCHER_HTTP_ONLY"):
         has_webview = False
-        safe_print("[WARN] 未安装 pywebview，回退到纯 HTTP 模式")
-        safe_print("       安装桌面窗口模式: pip install pywebview")
+        safe_print("[INFO] LAUNCHER_HTTP_ONLY 已设置，使用纯 HTTP 模式")
         safe_print(f"       浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+    else:
+        try:
+            import webview
+            has_webview = True
+        except ImportError:
+            has_webview = False
+            safe_print("[WARN] 未安装 pywebview，回退到纯 HTTP 模式")
+            safe_print("       安装桌面窗口模式: pip install pywebview")
+            safe_print(f"       浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
 
     # 2. 注册退出钩子（清理所有子进程）
     atexit.register(terminate_all)
@@ -155,76 +161,14 @@ def main():
         js_api=LauncherApi(),
     )
 
-    # 7. GUI 启动后回调：去标题栏 → 注入控制按钮与状态栏拖拽
+    # 7. GUI 启动后回调：去标题栏（Win32）
+    #    窗口控制按钮（—▢✕）、状态栏拖拽、边缘缩放热区已迁移到
+    #    layouts/_shared.js 的 setupWinChrome()，由前端自注入，
+    #    location.reload() 后不会丢失，无需在此 evaluate_js。
     def _after_start():
         if not window_win32.IS_WIN:
             return
         window_win32.ensure_borderless()
-        try:
-            window.evaluate_js("""
-                (function(){
-                    var sb=document.getElementById('statusbar');
-                    if(!sb)return;
-                    var sbR=sb.querySelector('.sbR');
-                    if(!sbR)return;
-                    /* 状态栏 = 标题栏：按下即请求原生拖拽（PostMessage 到 GUI 线程跑
-                       WM_NCLBUTTONDOWN 模态循环，同步跟随鼠标不抖动）；
-                       快速双击最大化/还原；按钮除外 */
-                    var lastDown=0;
-                    sb.addEventListener('pointerdown',function(e){
-                        if(e.target.closest('button'))return;
-                        var now=Date.now();
-                        if(now-lastDown<350){lastDown=0;pywebview.api.toggle_maximize();return;}
-                        lastDown=now;
-                        pywebview.api.start_drag();
-                    });
-                    /* 窗口已无可见边框，边缘缩放改用页面内的不可见热区触发
-                       （原生缩放循环，wparam 传命中码） */
-                    (function(){
-                        function mkZone(cur,code,css){
-                            var d=document.createElement('div');
-                            d.style.cssText='position:fixed;z-index:9998;background:transparent;cursor:'+cur+';'+css;
-                            d.addEventListener('pointerdown',function(e){
-                                e.stopPropagation();e.preventDefault();
-                                try{pywebview.api.start_resize(code);}catch(_){}
-                            });
-                            document.body.appendChild(d);
-                        }
-                        mkZone('ew-resize','l','left:0;top:0;width:6px;height:100%;');
-                        mkZone('ew-resize','r','right:0;top:0;width:6px;height:100%;');
-                        mkZone('ns-resize','t','left:0;top:0;width:100%;height:6px;');
-                        mkZone('ns-resize','b','left:0;bottom:0;width:100%;height:6px;');
-                        mkZone('nwse-resize','tl','left:0;top:0;width:12px;height:12px;');
-                        mkZone('nesw-resize','tr','right:0;top:0;width:12px;height:12px;');
-                        mkZone('nesw-resize','bl','left:0;bottom:0;width:12px;height:12px;');
-                        mkZone('nwse-resize','br','right:0;bottom:0;width:12px;height:12px;');
-                    })();
-                    var grp=document.createElement('span');
-                    grp.style.cssText='display:flex;align-items:center;gap:2px;margin-left:12px;background:rgba(255,255,255,0.05);border-radius:8px;padding:2px;';
-                    function mkBtn(svg,title,fn){
-                        var b=document.createElement('button');
-                        b.title=title;
-                        b.style.cssText='background:transparent;border:0;cursor:pointer;padding:6px 8px;border-radius:6px;transition:all 0.15s;display:flex;align-items:center;color:var(--text-secondary);';
-                        b.innerHTML=svg;
-                        b.onmouseover=function(){b.style.background='rgba(255,255,255,0.1)';b.style.color='var(--text-primary)';};
-                        b.onmouseout=function(){b.style.background='transparent';b.style.color='var(--text-secondary)';};
-                        b.onclick=fn;
-                        return b;
-                    }
-                    var minSvg='<svg width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="5.5" width="8" height="1.2" rx="0.6" fill="currentColor"/></svg>';
-                    var maxSvg='<svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
-                    var closeSvg='<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3.5 3.5L8.5 8.5M8.5 3.5L3.5 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-                    grp.appendChild(mkBtn(minSvg,'最小化',function(){pywebview.api.minimize_window();}));
-                    grp.appendChild(mkBtn(maxSvg,'最大化/还原',function(){pywebview.api.toggle_maximize();}));
-                    var cb=mkBtn(closeSvg,'关闭',function(){pywebview.api.close_window();});
-                    cb.onmouseover=function(){cb.style.background='rgba(248,113,113,0.2)';cb.style.color='#f87171';};
-                    cb.onmouseout=function(){cb.style.background='transparent';cb.style.color='var(--text-secondary)';};
-                    grp.appendChild(cb);
-                    sbR.appendChild(grp);
-                })();
-            """)
-        except Exception:
-            pass
 
     # 8. 启动 GUI 事件循环（阻塞，直到窗口关闭）
     window_win32.start_borderless_poller()  # 句柄一出现就去标题栏（仅本进程窗口）

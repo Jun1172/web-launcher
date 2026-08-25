@@ -121,14 +121,17 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
-        # ── 用户布局配置（dock / hidden 覆盖层）──
+        # ── 用户布局配置（dock / hidden / theme / layout 覆盖层）──
         if path == "/api/layout":
             from . import layout
+            from .frontend import DEFAULT_THEME, DEFAULT_LAYOUT
             ly = layout.load_layout()
             # dock=None 表示 layout.json 未保存过，前端用 app.json 默认值显示
             self._json({
                 "dock": ly.get("dock"),
                 "hidden": ly.get("hidden", []),
+                "theme": ly.get("theme", DEFAULT_THEME),
+                "layout": ly.get("layout", DEFAULT_LAYOUT),
             })
             return
 
@@ -231,18 +234,29 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "msg": f"保存失败: {e}"})
             return
 
-        # ── 保存用户布局配置 ──
+        # ── 保存用户布局配置（支持部分更新：dock/hidden/theme/layout 任一可选）──
         if path == "/api/layout":
             from . import layout
+            from .frontend import THEMES, LAYOUTS
             dock = data.get("dock")
             hidden = data.get("hidden")
-            if not isinstance(dock, list) or not isinstance(hidden, list):
-                self._json({"ok": False, "msg": "dock / hidden 必须为数组"})
-                return
+            theme = data.get("theme")
+            layout_id = data.get("layout")
+            # dock/hidden 若提供则必须为数组；theme 必须在 THEMES 中；layout 必须在 LAYOUTS 中
+            if dock is not None and not isinstance(dock, list):
+                self._json({"ok": False, "msg": "dock 必须为数组"}); return
+            if hidden is not None and not isinstance(hidden, list):
+                self._json({"ok": False, "msg": "hidden 必须为数组"}); return
+            if theme is not None and theme not in THEMES:
+                self._json({"ok": False, "msg": f"未知主题: {theme}"}); return
+            if layout_id is not None and layout_id not in LAYOUTS:
+                self._json({"ok": False, "msg": f"未知布局: {layout_id}"}); return
             try:
-                layout.save_layout(dock, hidden)
-                app_registry.reload_apps()  # 刷新内存注册表
-                self._json({"ok": True, "msg": "布局已保存"})
+                layout.save_layout(dock, hidden, theme, layout_id)
+                # dock/hidden 变化才需要刷新注册表；theme/layout 仅影响前端渲染
+                if dock is not None or hidden is not None:
+                    app_registry.reload_apps()
+                self._json({"ok": True, "msg": "已保存"})
             except Exception as e:
                 self._json({"ok": False, "msg": f"保存失败: {e}"})
             return

@@ -133,11 +133,9 @@ def ensure_index():
 
 def build_entry(meta, zip_path):
     """生成 index.json 里的单个 app 条目"""
-    # 核心改动：白名单中 system 替换为 group
+    # 白名单：只保留实际生效的字段（system 已废弃，group 为分组来源）
     FIELDS = ("id", "name", "icon", "color", "version", "changelog",
-              "port", "cmd", "dock", "group", 
-              "ready_check", "workdir", "stop_signal", "stop_timeout",
-              "restart_policy", "requires", "released")
+              "port", "cmd", "dock", "group", "released")
     entry = {k: meta[k] for k in FIELDS if k in meta}
 
     # 兼容处理：如果旧配置没有 group，自动推断并写入
@@ -148,8 +146,6 @@ def build_entry(meta, zip_path):
     entry["sha256"] = sha256(zip_path)
     entry.setdefault("released", datetime.datetime.now().isoformat())
     return entry
-
-MAX_VERSIONS = 0   # 不保留历史版本，已移除版本回退功能
 
 def publish_one(app_dir, *, upload=True, index_override=None):
     """发布单个应用"""

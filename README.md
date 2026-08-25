@@ -37,24 +37,23 @@
 ### 2. 优雅停止 + 进程树清理
 - `/api/close?id=<aid>` 触发 `p.terminate()` → 等 2 秒 → 兜底 `taskkill /F /T /PID`（Win）/ `os.killpg`（POSIX）杀整棵进程树
 - launcher 退出时 `atexit` 钩子按上述流程顺序停所有子进程，避免 C/C++ 子进程成孤儿
-- 不读 `stop_signal` / `stop_timeout`（这两字段当前保留，未生效；见路线图）
 
 ### 3. 系统应用 / 用户应用分层 + 自定义分组
 - **系统应用**（`apps/system/`）：默认安装、接受更新、不可卸载（受保护分组 `"system"`）
 - **用户应用**（`apps/user/`）：可安装 / 卸载
-- **自定义分组**：app.json 的 `group` 字段可填任意值（如 `"business"`、`"admin"`），发布与卸载按此分组；缺省时根据 `system` 字段推导为 `"system"` 或 `"user"`
+- **自定义分组**：app.json 的 `group` 字段可填任意值（如 `"business"`、`"admin"`），发布与卸载按此分组；缺省时推导为 `"user"`
 
 ### 4. 仓库索引 + 原子安装
 - 远端仓库是一个 HTTP 静态目录：`index.json` + `packages/<id>-<ver>.zip` + `launcher-<ver>.zip`
 - `repo_get(path)` 支持 BASIC 认证 + SSL 校验开关
-- `atomic_extract_zip`：sha256 校验 → 写 tmp → 解压（防 zip 路径穿越）→ `shutil.move` 原子替换目标目录
+- `atomic_extract_zip`（在 `launcher/zipio.py`）：sha256 校验 → 写 tmp → 解压（防 zip 路径穿越）→ `shutil.move` 原子替换目标目录
 - 兼容 3 种 zip 结构：`apps/<group>/<id>/...` / `<id>/...` / 扁平文件列表
-- 支持安装最新版本或指定历史版本（供回退）
+- 安装 / 升级到最新版本
 
 ### 5. 多语言 cmd 解析
 - `.py` / `.pyw`：自动前缀 `sys.executable`
 - `.exe` / ELF / 任意可执行文件：直接执行
-- 当前**不透传** `workdir` / `env`（字段保留，未生效；见路线图）
+- 当前**不透传** `env`
 
 ### 6. Launcher 自更新（双模式 OTA）
 - `/api/launcher/update` 触发 → `do_launcher_update` 用 `getattr(sys, "frozen", False)` 区分：
@@ -73,7 +72,7 @@
 - **分页桌面**：响应式网格 + 左右滑动 + 分页指示器
 - **Dock 栏**：常驻底部，毛玻璃拟态，悬停上浮放大
 - **最近任务面板**：底部上滑手势呼出，卡片上滑清除、全部清除、点击切回应用
-- **应用商店详情弹窗**：展示 Changelog / 历史版本列表 / 一键回退
+- **应用商店详情弹窗**：展示 Changelog / 版本信息
 - **关于模态**：本地 + 远端版本对比、Changelog、立即检查更新
 - **手势**：水平滑动切屏、垂直上滑开最近任务、底部 Home 条点击关闭面板
 
@@ -88,8 +87,9 @@
 │    ├ config.py          ← 配置加载/路径常量/工具函数 │
 │    ├ app_registry.py    ← 应用扫描/注册表/group推导  │
 │    ├ process_manager.py ← spawn/port_probe/close   │
-│    ├ app_operations.py  ← install/uninstall/回退    │
+│    ├ app_operations.py  ← install/uninstall         │
 │    ├ repo.py            ← 仓库索引/HTTP 客户端      │
+│    ├ zipio.py           ← 原子解压工具             │
 │    ├ http_handler.py    ← 路由                      │
 │    ├ frontend.py        ← 首页 HTML 渲染             │
 │    ├ layout.py          ← 用户布局覆盖（layout.json）│
@@ -98,8 +98,8 @@
 │  ─────────────────────────────────────────────────  │
 │  • 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务面板）  │
 │  • 应用生命周期（spawn / port_probe / graceful stop）│
-│  • 安装/卸载/版本回退 + 受保护分组（system 不可卸载）│
-│  • 应用商店详情弹窗 + 历史版本回退                  │
+│  • 安装/卸载 + 受保护分组（system 不可卸载）        │
+│  • 应用商店详情弹窗                                │
 │  • 用户布局覆盖（layout.json：dock/hidden）        │
 │  • 自更新（开发态 zip 覆盖 / 编译态 bat/sh 替换）  │
 └─────────────┬───────────────────────────┬──────────┘
@@ -180,11 +180,10 @@ python launcher.py
 | `/api/apps` | GET | 列出全部应用 + 运行状态（含 `running: bool`） |
 | `/api/layout` | GET | 读取用户布局（dock / hidden；未保存过时 dock=null） |
 | `/api/layout` | POST | 保存布局配置（原子写 layout.json + reload_apps） |
-| `/api/repo` | GET | 拉取远端仓库索引（含可升级标记 + 历史 versions） |
+| `/api/repo` | GET | 拉取远端仓库索引（含可升级标记） |
 | `/api/repo/config` | GET | 读取仓库 URL / BASIC 认证 / SSL 配置 |
 | `/api/repo/config` | POST | 保存仓库配置（原子写 config.json + reload） |
 | `/api/install?id=<aid>` | GET | 安装 / 升级应用到最新版本 |
-| `/api/install-version?id=<aid>&version=<v>` | GET | 安装指定历史版本（供回退） |
 | `/api/uninstall?id=<aid>` | GET | 卸载用户应用（受保护分组 system 拒绝） |
 | `/api/open?id=<aid>` | GET | 启动应用进程 + 返回 iframe URL |
 | `/api/close?id=<aid>` | GET | 关闭应用进程树（terminate → 2s → 强 kill） |
@@ -252,7 +251,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 | 应用 | 端口 | 说明 |
 |------|------|------|
 | 🧮 calculator | 8140 | 科学计算器 |
-| 🛒 应用商店 store | 8100 | 安装 / 升级 / 卸载用户应用，详情弹窗 + 历史版本回退 |
+| 🛒 应用商店 store | 8100 | 安装 / 升级 / 卸载用户应用，详情弹窗 |
 | ⏱️ 番茄钟 clock | 8102 | 计时器 demo |
 | 📊 系统信息 sysinfo | 8103 | CPU / 内存 / 磁盘 + 版本信息 + 已安装应用列表 |
 | ⚙️ 设置 settings | 8104 | 仓库地址 / BASIC 认证 / SSL 校验配置 |
@@ -318,7 +317,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 ### 已完成
 - [x] 进程启动 + TCP 端口就绪探测
 - [x] 优雅停止（terminate → 2s → 强 kill 进程树）+ atexit 回收
-- [x] 安装 / 卸载 / 历史版本回退 + 原子解压 + sha256 校验
+- [x] 安装 / 卸载 + 原子解压 + sha256 校验
 - [x] 仓库索引 + BASIC 认证 + SSL 开关
 - [x] system/user 两级目录 + 受保护分组（system 不可卸载）
 - [x] 自定义 group 字段（business / admin 等）
@@ -326,14 +325,10 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 - [x] 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务 + 关于 + 商店详情弹窗）
 - [x] 用户级布局覆盖（layout.json：dock / hidden）
 - [x] cpp-hello demo（C++ 应用部署模板）
-- [x] 代码模块化（launcher/ 包 9 个功能模块）
+- [x] 代码模块化（launcher/ 包 10 个功能模块）
 
 ### 待实现
-- [ ] **ready_check 5 种就绪判定**（http/tcp/process/file/none）—— 当前只做 TCP 端口探测
-- [ ] **restart_policy 崩溃重启**（always/failure/never + max_retries + delay）—— 当前无 watcher 线程
-- [ ] **requires 依赖校验**（python/packages/system）—— 当前 do_install 不校验
-- [ ] **stop_signal / stop_timeout 可配**—— 当前硬编码 terminate + 2s
-- [ ] **workdir / env 透传**—— 当前 Popen 不传
+- [ ] **env 透传**—— 当前 Popen 不传
 - [ ] **status 多状态字段**（starting/restarting/crashed/stopped）—— 当前只有 running: bool
 - [ ] **独立更新工具 launcher_updater.py**（外部触发的 check/update，当前未实现）
 - [ ] **publish.py --binary** 多平台打包

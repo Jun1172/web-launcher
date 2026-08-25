@@ -8,6 +8,5 @@
   "port": 8101,
   "cmd": ["apps/user/todo/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

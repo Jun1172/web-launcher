@@ -8,6 +8,5 @@
   "port": 8168,
   "cmd": ["apps/user/nixie-clock/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

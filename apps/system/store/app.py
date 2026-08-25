@@ -297,7 +297,7 @@ body {
     <div class="modalHead">
       <div class="bigIcon" id="dIcon">📦</div>
       <div class="titleRow">
-        <h2 id="dName">应用名称</h2>
+        <h2 id="dName">应用名称<span class="app-tag" id="dTag" style="display:none">系统</span></h2>
         <div class="metaTop" id="dMeta">版本信息…</div>
       </div>
       <button class="x" onclick="closeDetail()" aria-label="关闭">×</button>
@@ -502,7 +502,7 @@ function renderCard(app){
       <div class="app-meta">${verHtml} · ${fmtSize(app.size)}</div>
     </div>
     <div class="app-actions">
-      <button class="btn-info" data-action="detail" data-id="${app.id}" title="查看详情 / 历史版本">ⓘ</button>
+      <button class="btn-info" data-action="detail" data-id="${app.id}" title="查看详情">ⓘ</button>
       ${action}
     </div>`;
   return d;

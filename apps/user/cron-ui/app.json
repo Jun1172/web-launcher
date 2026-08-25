@@ -8,6 +8,5 @@
   "port": 8152,
   "cmd": ["apps/user/cron-ui/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

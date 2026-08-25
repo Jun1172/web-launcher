@@ -8,6 +8,5 @@
   "port": 8154,
   "cmd": ["apps/system/md-viewer/app.py"],
   "dock": true,
-  "system": true,
   "group": "system"
 }

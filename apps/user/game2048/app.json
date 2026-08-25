@@ -8,6 +8,5 @@
   "port": 8121,
   "cmd": ["apps/user/game2048/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

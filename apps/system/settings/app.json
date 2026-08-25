@@ -8,6 +8,5 @@
   "port": 8104,
   "cmd": ["apps/system/settings/app.py"],
   "dock": true,
-  "system": true,
   "group": "system"
 }

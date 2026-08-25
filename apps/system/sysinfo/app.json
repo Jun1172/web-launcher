@@ -8,6 +8,5 @@
   "port": 8103,
   "cmd": ["apps/system/sysinfo/app.py"],
   "dock": true,
-  "system": true,
   "group": "system"
 }

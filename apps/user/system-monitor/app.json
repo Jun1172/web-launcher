@@ -8,6 +8,5 @@
   "port": 8125,
   "cmd": ["apps/user/system-monitor/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

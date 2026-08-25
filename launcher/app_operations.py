@@ -1,7 +1,6 @@
-"""app_operations - 安装 / 卸载 / 版本回退 / Launcher 自更新
+"""app_operations - 安装 / 卸载 / Launcher 自更新
 核心函数:
 do_install(aid):              安装（升级）应用到最新版本
-do_install_version(aid, ver): 安装指定版本（供回退用）
 do_uninstall(aid):            卸载普通应用（受保护分组拒绝）
 get_launcher_version_info():  读取本地+远端 launcher 版本，比较是否可升级
 do_launcher_update():         下载远端 launcher zip → 校验 → bak → 覆盖
@@ -15,7 +14,8 @@ from . import config
 from .config import BASE, APPS_DIR, vt
 from .app_registry import reload_apps, derive_group
 from .process_manager import close_app
-from .repo import repo_get, repo_index, atomic_extract_zip
+from .repo import repo_get, repo_index
+from .zipio import atomic_extract_zip
 
 # ━━━━━━━━━━━━━━━━━━━━━ 核心配置 ━━━━━━━━━━━━━━━━━━━━━
 # 定义哪些分组的应用是“受保护的”，不允许通过商店卸载
@@ -24,8 +24,8 @@ PROTECTED_GROUPS = {"system"}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━ 应用安装/更新 ━━━━━━━━━━━━━━━━━━━━━
-def _resolve_pkg_meta(aid, version=None):
-    """在 repo_index() 中查找 app 条目及指定或最新的元数据。
+def _resolve_pkg_meta(aid):
+    """在 repo_index() 中查找 app 条目最新的元数据。
     返回 (success, meta_for_unpack, msg)。
     """
     try:
@@ -41,18 +41,7 @@ def _resolve_pkg_meta(aid, version=None):
     target_pkg = match.get("pkg")
     target_sha = match.get("sha256")
     target_ver = match.get("version", "0.0.1")
-
     app_group = derive_group(match)
-
-    if version is not None:
-        if version != match.get("version"):
-            versions = match.get("versions", []) or []
-            v_meta = next((v for v in versions if v.get("version") == version), None)
-            if not v_meta:
-                return False, None, f"仓库无此历史版本: {version}"
-            target_pkg = v_meta.get("pkg")
-            target_sha = v_meta.get("sha256")
-            target_ver = version
 
     if not target_pkg:
         return False, None, "条目缺少 pkg 字段"
@@ -67,14 +56,10 @@ def _resolve_pkg_meta(aid, version=None):
 
 def do_install(aid):
     """安装/升级应用到最新版本。"""
-    return do_install_version(aid, version=None)
-
-def do_install_version(aid, version):
-    """安装/升级/回退到指定 version。version=None 表示最新。"""
     if not aid:
         return False, "缺少 id"
         
-    ok, meta, msg = _resolve_pkg_meta(aid, version=version)
+    ok, meta, msg = _resolve_pkg_meta(aid)
     if not ok:
         return False, msg
 

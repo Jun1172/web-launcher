@@ -8,6 +8,5 @@
   "port": 8122,
   "cmd": ["apps/user/hello/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

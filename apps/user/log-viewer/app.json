@@ -8,6 +8,5 @@
   "port": 8151,
   "cmd": ["apps/user/log-viewer/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

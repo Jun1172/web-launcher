@@ -8,6 +8,5 @@
   "port": 8123,
   "cmd": ["apps/user/weather/app.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

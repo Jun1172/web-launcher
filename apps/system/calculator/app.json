@@ -8,6 +8,5 @@
   "port": 8140,
   "cmd": ["apps/system/calculator/app.py"],
   "dock": true,
-  "system": true,
   "group": "system"
 }

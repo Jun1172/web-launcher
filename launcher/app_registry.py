@@ -20,14 +20,11 @@ REGISTRY = []
 
 
 def derive_group(meta):
-    """从 app.json 元数据推导分组：优先 group 字段，缺省时按 system 推导。
+    """从 app.json 元数据推导分组：group 字段为唯一来源，缺省视为 "user"。
 
-    system=true → "system"；否则 → "user"。返回 str。
+    system 字段已废弃，不再是判定依据。返回 str。
     """
-    g = meta.get("group")
-    if g is not None:
-        return g
-    return "system" if meta.get("system") else "user"
+    return meta.get("group") or "user"
 
 
 def resolve_cmd(meta, app_dir):
@@ -88,7 +85,11 @@ def _scan_all_apps():
             safe_print(f"[WARN] 应用 {d.name} 加载失败: {e}")
             continue
         meta.setdefault("id", d.name)
-        meta["system"] = bool(meta.get("system"))
+        # group 为唯一判定来源；system 字段已废弃。system 标记从 group 派生，
+        # 仅供 load_system_apps / load_user_apps 内部筛选使用。
+        g = derive_group(meta)
+        meta["group"] = g
+        meta["system"] = (g == "system")
         meta["cmd"] = resolve_cmd(meta, d)
         meta.setdefault("version", "0.0.1")
         meta.setdefault("changelog", "")

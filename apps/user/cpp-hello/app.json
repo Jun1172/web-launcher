@@ -8,6 +8,5 @@
   "port": 8124,
   "cmd": ["apps/user/cpp-hello/run.py"],
   "dock": false,
-  "system": false,
   "group": "user"
 }

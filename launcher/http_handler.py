@@ -3,9 +3,8 @@
 路由表:
   GET /                         → 首页 HTML（frontend.render_home_html）
   GET /api/apps                 → 已安装应用 + running 标记
-  GET /api/repo                 → 仓库应用 + 本地版本/可升级对比（含 versions 供回退）
+  GET /api/repo                 → 仓库应用 + 本地版本/可升级对比
   GET /api/install?id=xxx       → 安装/升级到最新版本
-  GET /api/install-version?id=xx&version=yyy → 安装指定版本（回退）
   GET /api/uninstall?id=xxx     → 卸载用户应用
   GET /api/open?id=xxx          → 启动应用进程 + 返回 iframe URL
   GET /api/close?id=xxx         → 关闭应用进程树

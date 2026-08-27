@@ -135,26 +135,29 @@ def _kill_tree_posix(pid):
 
 
 def close_app(aid):
-    """关闭单个应用进程 + 进程树。先 terminate 等 2s，兜底强杀。"""
+    """关闭单个应用进程 + 进程树，确保子进程（如 ROS 节点）一并终止，避免孤儿残留。
+
+    应用可能通过 subprocess 起一整条子进程链（如 shell → pixi → python → ROS 节点）。
+    若只 terminate 主进程、主进程一退出就跳过强杀，子节点会被引用为孤儿继续运行。
+    因此在 Windows 上直接 taskkill /F /T（连根带支整体杀），POSIX 上 SIGKILL 整个进程组。
+    """
     actual_ports.pop(aid, None)  # 清除端口映射
     p = procs.pop(aid, None)
     if p is None or p.poll() is not None:
         return
+    root = p.pid
+    if os.name == "nt":
+        _kill_tree_nt(root)   # taskkill /F /T 一次性终止整棵进程树
+    else:
+        _kill_tree_posix(root)  # 负 pid 给进程组发 SIGKILL，连同子进程
+    # reap 根进程，避免僵尸
     try:
-        p.terminate()
+        p.wait(timeout=3)
     except Exception:
-        pass
-    # 等待 2 秒让子进程自行退出
-    deadline = time.time() + 2.0
-    while time.time() < deadline and p.poll() is None:
-        time.sleep(0.05)
-    if p.poll() is None:
-        pid = p.pid
-        if os.name == "nt":
-            _kill_tree_nt(pid)
-        else:
-            _kill_tree_posix(pid)
-    # 最后一次 reap，避免僵尸
+        try:
+            p.kill()
+        except Exception:
+            pass
     try:
         p.poll()
     except Exception:

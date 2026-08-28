@@ -6,7 +6,6 @@
  *   onDragHReset() - 拖动结束重置过渡（可选）
  *   onSwipeH(dx)   - 横向滑动结束（可选，dx>0 右滑翻上页，dx<0 左滑翻下页）
  */
-const LAUNCHER_VER = '__VERSION__';
 const THEMES = __THEMES__;
 const LAYOUTS = __LAYOUTS__;
 let currentTheme='tech-dark';

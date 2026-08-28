@@ -157,7 +157,6 @@ if IS_WIN:
             return _user32.DefWindowProcW(hwnd, msg, wparam, lparam)
         try:
             if msg == _WM_NCCALCSIZE and wparam:
-                safe_print("[DBG] NCCALCSIZE 拦截 -> 0")
                 return 0
             if msg == _WM_APP_BORDERLESS:
                 _user32.ReleaseCapture()

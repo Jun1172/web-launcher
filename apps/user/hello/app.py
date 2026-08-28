@@ -2,10 +2,26 @@
 - 单文件 HTTP 服务，端口写死 8110
 - 验证：launcher 拉起进程 → iframe 嵌入 → 简单 JS 交互
 """
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import json
 import os
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 
-PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
+
+def get_port():
+    """端口读取：优先 LAUNCHER_APP_PORT，缺失回退 app.json 的 port，均无效返回 0。"""
+    env_port = os.environ.get("LAUNCHER_APP_PORT")
+    if env_port:
+        try: return int(env_port)
+        except ValueError: pass
+    j = Path(__file__).resolve().parent / "app.json"
+    if j.exists():
+        try: return int(json.loads(j.read_text(encoding="utf-8")).get("port", 0))
+        except Exception: pass
+    return 0
+
+
+PORT = get_port()
 
 HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

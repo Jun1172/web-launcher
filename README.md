@@ -59,7 +59,7 @@
 - `/api/launcher/update` 触发 → `do_launcher_update` 用 `getattr(sys, "frozen", False)` 区分：
   - **源码模式**：下载 `launcher-<ver>.zip` → 解压覆盖 `launcher.py` / `launcher/` 包 → 合并 `config.json` → reload
   - **编译模式**：下载二进制 → 校验 sha256 → `updater.launch_self_update()` 后台 spawn `updater.bat`（Win）/ `updater.sh`（Linux）→ 主进程退出 → 脚本替换 exe → 自动重启
-- 状态栏 ⚙️ 按钮显示版本号，有新版本时红点闪烁
+- `GET /api/launcher/version` 返回本地 + 远端版本对比（`upgradable`），`GET /api/launcher/update` 触发 OTA
 
 ### 7. 用户级布局覆盖（layout.json）
 - 状态栏 🗂️ 按钮打开"布局编辑"面板
@@ -68,12 +68,11 @@
 - POST `/api/layout` 保存后立即 `reload_apps()` 刷新注册表
 
 ### 8. 桌面交互（仿移动端）
-- **状态栏**：时钟 / 网络 / 电量 / 🗂️ 布局编辑 / ⚙️ 关于按钮（带更新红点）
+- **状态栏**：时钟 / 网络 / 电量 / 🗂️ 布局编辑 / 窗口控制按钮（最小化 / 最大化 / 关闭，桌面模式）
 - **分页桌面**：响应式网格 + 左右滑动 + 分页指示器
 - **Dock 栏**：常驻底部，毛玻璃拟态，悬停上浮放大
 - **最近任务面板**：底部上滑手势呼出，卡片上滑清除、全部清除、点击切回应用
 - **应用商店详情弹窗**：展示 Changelog / 版本信息
-- **关于模态**：本地 + 远端版本对比、Changelog、立即检查更新
 - **手势**：水平滑动切屏、垂直上滑开最近任务、底部 Home 条点击关闭面板
 
 ## 🏗 架构
@@ -83,7 +82,7 @@
 │  Launcher (Python stdlib, http.server, port 8000)  │
 │  ─────────────────────────────────────────────────  │
 │  launcher.py            ← 薄壳入口                  │
-│  launcher/              ← 10 个功能模块             │
+│  launcher/              ← 13 个功能模块             │
 │    ├ config.py          ← 配置加载/路径常量/工具函数 │
 │    ├ app_registry.py    ← 应用扫描/注册表/group推导  │
 │    ├ process_manager.py ← spawn/port_probe/close   │
@@ -93,7 +92,10 @@
 │    ├ http_handler.py    ← 路由                      │
 │    ├ frontend.py        ← 首页 HTML 渲染             │
 │    ├ layout.py          ← 用户布局覆盖（layout.json）│
-│    └ updater.py         ← 二进制 OTA 替换脚本       │
+│    ├ updater.py         ← 二进制 OTA 替换脚本       │
+│    ├ window_win32.py    ← Win32 无边框窗口/缩放控制 │
+│    ├ __main__.py        ← 进程入口（HTTP+pywebview）│
+│    └ templates/         ← 布局/主题模板（4+3）      │
 │  publish.py             ← 发布到仓库                │
 │  ─────────────────────────────────────────────────  │
 │  • 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务面板）  │
@@ -112,7 +114,7 @@
 │    store/  todo/  clock/│    │  packages/<id>-<ver>.zip │
 │    sysinfo/ settings/   │    │  launcher-<ver>.zip      │
 │  apps/user/             │    └──────────────────────────┘
-│  apps/general/          │              ▲
+│  apps/etws/  apps/ros/  │              ▲
 │  apps/game/ (外部仓库)  │ ─────────────┘
 │  app.json 递归扫描      │  publish.py --all / --launcher
 └─────────────────────────┘
@@ -127,27 +129,27 @@ python launcher.py
 # 2. 浏览器打开（一般会自动打开）
 # http://127.0.0.1:8000/
 
-| 🧮 calculator | 8140 | 科学计算器 |
 # 3. 点桌面图标打开任意应用，或点 🛒 应用商店安装新应用
 
 需要 Python ≥ 3.8，无第三方依赖（标准库足够）。
 
-| 📖 md-viewer | 8154 | 本地 Markdown 文档查看器 |
 ## 📋 app.json Schema
 
 应用清单文件，放在 `apps/system/<id>/app.json` 或 `apps/user/<id>/app.json`。
 
 | 字段 | 类型 | 必填 | 默认 | 说明 |
-| 👋 hello | 8120 | 最简交互 demo |
-| 🕒 cron-ui | 8121 | 可视化定时任务 |
-| 📄 file-demo | — | 文件示例 |
-| 🎮 game2048 | 8122 | 2048 小游戏 |
-| 📋 log-viewer | 8123 | 日志查看示例 |
-| 🕰️ nixie-clock | 8124 | 拟真数码管时钟 |
-| 📈 system-monitor | 8125 | 系统资源实时监控 |
-| 🌤️ weather | 8126 | 天气示例 |
-| 🦾 cpp-hello | 8127 | C++ 应用部署模板 |
-| 📝 todo | 8128 | 待办清单示例 |
+|------|------|------|------|------|
+| `id` | string | ✅ | — | 应用唯一标识（与目录名一致） |
+| `name` | string | ✅ | — | 显示名称 |
+| `version` | string | ✅ | — | 语义化版本号（`1.0.0`） |
+| `cmd` | string[] | ❌ | — | 启动命令；`.py`/`.pyw` 自动前缀 `sys.executable`，其他直接执行 |
+| `port` | int | ❌ | — | 建议端口（被占时 launcher 自动分配随机端口）；用于 TCP 就绪探测 + iframe URL |
+| `icon` | string | ❌ | 📦 | emoji 图标 |
+| `color` | string | ❌ | #999 | 主题色（CSS） |
+| `group` | string | ❌ | `"user"` | 分组来源；`"system"` 受保护不可卸载 |
+| `dock` | bool | ❌ | false | 是否常驻底部 Dock（用户可用 layout.json 覆盖） |
+| `changelog` | string | ❌ | — | 版本说明 |
+| `released` | string | ❌ | — | 发布时间（ISO 8601） |
 
 `cpp-hello` 是 C/C++ 应用的接入模板。`socket`、串口、ROS2 等原生程序可参照它：源码 + `build.{bat,sh}` + `run.py` 包装 + `app.json`。
 ### 最小可用清单
@@ -177,7 +179,7 @@ python launcher.py
 
 | 路径 | 方法 | 说明 |
 |------|------|------|
-| `/api/apps` | GET | 列出全部应用 + 运行状态（含 `running: bool`） |
+| `/api/apps` | GET | 列出全部应用 + 运行状态（含 `running: bool` 与 `actual_port`） |
 | `/api/layout` | GET | 读取用户布局（dock / hidden；未保存过时 dock=null） |
 | `/api/layout` | POST | 保存布局配置（原子写 layout.json + reload_apps） |
 | `/api/repo` | GET | 拉取远端仓库索引（含可升级标记） |
@@ -227,7 +229,7 @@ python publish.py apps/user/hello --dry-run
 python publish.py --launcher --changelog "修复 X，新增 Y"
 ```
 
-客户端在状态栏右上角 ⚙️ `v1.0.2` 胶囊可见，有新版本时红点闪烁，点击「立即更新」即可 OTA。
+通过 `GET /api/launcher/version` 查看本地/远端版本对比，`GET /api/launcher/update` 触发 OTA 更新。
 
 > 注：外部独立更新工具（`launcher_updater.py`）尚未实现，当前仅支持通过 UI 触发 OTA；见路线图。
 
@@ -261,31 +263,31 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 
 | 应用 | 端口 | 演示场景 |
 |------|------|----------|
-| 👋 hello | 8120 | 最简交互 demo |
-| 🕒 cron-ui | 8121 | 可视化定时任务 |
-| 📄 file-demo | — | 文件示例 |
-| 🎮 game2048 | 8122 | 2048 小游戏 |
-| 📋 log-viewer | 8123 | 日志查看示例 |
-| 🕰️ nixie-clock | 8124 | 拟真数码管时钟 |
+| 🎮 game2048 | 8121 | 2048 小游戏 |
+| 👋 hello | 8122 | 最简交互 demo |
+| 🌤️ weather | 8123 | 天气示例 |
+| 🦾 cpp-hello | 8124 | C++ 应用部署模板 |
 | 📈 system-monitor | 8125 | 系统资源实时监控 |
-| 🌤️ weather | 8126 | 天气示例 |
-| 🦾 cpp-hello | 8127 | C++ 应用部署模板 |
-| 📝 todo | 8128 | 待办清单示例 |
+| 📋 log-viewer | 8151 | 日志查看示例 |
+| 🕒 cron-ui | 8152 | 可视化定时任务 |
+| 🕰️ nixie-clock | 8168 | 拟真数码管时钟 |
+| 📝 todo | 8101 | 待办清单示例 |
 
-### 通用工具（`apps/general/`）
+### etws / ros 分组（业务工具）
 
-当前包含 `cron-ui`、`file-sharer`、`log-viewer`、`md-viewer`、`net-diag` 等应用，用于演示文件传输、日志查看、Markdown 查看和网络诊断等功能。
-
-  },
-  "publish": {
-    "server": "ubuntu@1.15.30.237",
-    "remote_path": "/var/www/repo",
-    "packages_dir": "packages"
-  }
-}
-```
-
-`publish` 字段仅供本地开发用，**不进 launcher 自更新包**（脱敏处理）。
+| 分组 | 应用 | 端口 |
+|------|------|------|
+| etws | ad-analysis（AD 数据解析） | 8116 |
+| etws | mqtt-monitor（状态监测） | 8150 |
+| etws | radar-viewer（雷达数据） | 8160 |
+| etws | channel-analyse（通道分析） | 8165 |
+| ros | ros2-monitor（ROS2 监控） | 8201 |
+| ros | ros2-topic-inspector（话题） | 8203 |
+| ros | ros2-service（服务） | 8204 |
+| ros | ros2-param（参数） | 8205 |
+| ros | ros2-action（动作） | 8206 |
+| ros | ros2-graph（关系图） | 8207 |
+| ros | ros2-type-studio（类型/波形） | 8209 |
 
 ## 🌐 部署到嵌入式主板
 
@@ -325,7 +327,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 - [x] 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务 + 关于 + 商店详情弹窗）
 - [x] 用户级布局覆盖（layout.json：dock / hidden）
 - [x] cpp-hello demo（C++ 应用部署模板）
-- [x] 代码模块化（launcher/ 包 10 个功能模块）
+- [x] 代码模块化（launcher/ 包 13 个功能模块）
 
 ### 待实现
 - [ ] **env 透传**—— 当前 Popen 不传

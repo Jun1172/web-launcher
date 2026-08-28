@@ -7,6 +7,7 @@ do_launcher_update():         下载远端 launcher zip → 校验 → bak → �
 """
 import json
 import shutil
+import sys
 import urllib.request
 import zipfile 
 from pathlib import Path
@@ -126,7 +127,7 @@ def get_launcher_version_info():
         "released_remote": "",
         "error": None,
     }
-    if getattr(__import__("sys"), "frozen", False):
+    if getattr(sys, "frozen", False):
         try:
             release = _gitee_latest_release()
             remote_ver = release["version"]
@@ -199,11 +200,9 @@ def _atomic_overwrite_file(src_bytes: bytes, target: Path):
 def do_launcher_update():
     """下载远端 launcher 更新 → 校验 → 执行。
 
-    编译态（PyInstaller）走 _update_frozen（二进制替换 + 重启）；
+    编译态（PyInstaller）走 _update_frozen_release（二进制替换 + 重启）；
     开发态走 _update_dev（zip 覆盖源码 + 合并 config + reload）。
     """
-    import sys
-    import sys
     if getattr(sys, "frozen", False):
         try:
             return _update_frozen_release(_gitee_latest_release())
@@ -219,35 +218,7 @@ def do_launcher_update():
     if not meta:
         return False, "远端无 launcher 发布", False
 
-    if getattr(sys, "frozen", False):
-        return _update_frozen(meta)
     return _update_dev(meta)
-
-
-def _update_frozen(meta):
-    """编译态：下载二进制 → 校验 → 安排替换重启。"""
-    import hashlib
-    binary_pkg = meta.get("binary") or meta.get("pkg")
-    if not binary_pkg:
-        return False, "远端无 launcher 二进制包", False
-    sha = meta.get("sha256")
-    try:
-        data = repo_get(binary_pkg).read()
-    except Exception as e:
-        return False, f"下载失败: {e}", False
-
-    if sha and hashlib.sha256(data).hexdigest() != sha:
-        return False, "sha256 校验失败", False
-
-    import sys
-    new_exe = Path(sys.executable).parent / "launcher.new"
-    new_exe.write_bytes(data)
-
-    from . import updater
-    ok, msg = updater.launch_self_update(new_exe)
-    if ok:
-        return True, "更新已下载，程序将自动重启", True
-    return False, msg, False
 
 
 def _update_frozen_release(release):
@@ -261,7 +232,7 @@ def _update_frozen_release(release):
         return False, f"下载 Gitee Release 失败: {e}", False
     if not data.startswith(b"MZ"):
         return False, "下载的 Release 附件不是有效的 Windows exe", False
-    new_exe = Path(__import__("sys").executable).parent / "launcher.new"
+    new_exe = Path(sys.executable).parent / "launcher.new"
     new_exe.write_bytes(data)
     from . import updater
     ok, msg = updater.launch_self_update(new_exe)

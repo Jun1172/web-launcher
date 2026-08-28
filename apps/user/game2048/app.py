@@ -2,10 +2,26 @@
 - 端口 8114
 - 验证：复杂游戏逻辑 + 键盘/触摸滑动 + localStorage 存最高分
 """
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import json
 import os
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 
-PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
+
+def get_port():
+    """端口读取：优先 LAUNCHER_APP_PORT，缺失回退 app.json 的 port，均无效返回 0。"""
+    env_port = os.environ.get("LAUNCHER_APP_PORT")
+    if env_port:
+        try: return int(env_port)
+        except ValueError: pass
+    j = Path(__file__).resolve().parent / "app.json"
+    if j.exists():
+        try: return int(json.loads(j.read_text(encoding="utf-8")).get("port", 0))
+        except Exception: pass
+    return 0
+
+
+PORT = get_port()
 
 HTML = r"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">

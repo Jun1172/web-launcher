@@ -21,8 +21,7 @@ def get_port():
     if app_json_path.exists():
         try:
             config = json.loads(app_json_path.read_text(encoding="utf-8"))
-            # 兼容处理：防止 json 中键名带有意外空格 (如 "port ")
-            port = config.get("port") or config.get("port ")
+            port = config.get("port")
             if port: return int(port)
         except Exception: pass
         

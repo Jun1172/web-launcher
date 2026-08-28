@@ -40,7 +40,7 @@ static int get_port() {
         int p = std::atoi(env);
         if (p > 0) return p;
     }
-    return 8124;
+    return 8124;  // 默认端口，与 app.json 的 port(8124) 保持一致
 }
 static std::atomic<int> g_req_count{0};
 static std::atomic<bool> g_running{true};

@@ -7,7 +7,7 @@
 ```
 apps/user/cpp-hello/
 ├── app.json         # 应用清单：cmd 指向 run.py（启动包装）
-├── cpp-hello.cpp    # C++ 源码：跨平台 socket HTTP server，端口 8140
+├── cpp-hello.cpp    # C++ 源码：跨平台 socket HTTP server，端口 8124
 ├── run.py           # 启动包装：按平台选可执行文件，用 subprocess.Popen 拉起 + 转发终止信号
 ├── build.bat        # Windows 编译脚本（g++ 或 MSVC cl）
 ├── build.sh         # Linux/macOS 编译脚本（g++ 或 clang++）
@@ -20,7 +20,7 @@ apps/user/cpp-hello/
 
 C++ 应用在 launcher 中的部署流程：
 
-1. **源码即文档**：`app.json.requires.comment` 说明编译方式
+1. **源码即文档**：`app.json.changelog` 说明编译方式
 2. **本机编译**：发布前在目标机器上跑 `build.bat` / `bash build.sh`，产物在 `bin/` 下
 3. **启动包装**：`run.py` 负责跨平台选可执行文件 + 用 `subprocess.Popen` 拉起 + 转发 SIGTERM 给子进程
    - launcher 看到的 PID 是 Python 包装进程（可观测、可停止）
@@ -45,8 +45,8 @@ bash build.sh
 # 编译完后，通过 launcher 启动
 curl http://127.0.0.1:8000/api/open?id=cpp-hello
 
-# 应返回 {"ok": true, "url": "http://127.0.0.1:8140"}
-# 浏览器打开 http://127.0.0.1:8140 看到 "Hello from C++!" 页面
+# 应返回 {"ok": true, "url": "http://127.0.0.1:8124"}
+# 浏览器打开 http://127.0.0.1:8124 看到 "Hello from C++!" 页面
 
 # 优雅停止：launcher 发 SIGTERM（Linux）/ taskkill（Windows）
 curl http://127.0.0.1:8000/api/close?id=cpp-hello
@@ -57,14 +57,15 @@ curl http://127.0.0.1:8000/api/close?id=cpp-hello
 把 cpp-hello 当模板：
 
 - 替换 `cpp-hello.cpp` 为你的 socket/串口/ROS2 节点实现
-- 修改 `PORT` 和 `app.json` 里的 `port` / `ready_check`
-- 如果不是 HTTP 服务，改 `ready_check.type` 为 `tcp` / `process` / `file`
+- 修改 `PORT` 和 `app.json` 里的 `port`
+- 端口就绪探测由 launcher 统一做（TCP 轮询，超时 6s）；无端口的进程型应用启动即视为就绪
 - 在目标板（如树莓派 / Jetson）上交叉编译，把 bin/ 拷贝过去
 - 在 launcher 机器上拉取 zip 即可部署
 
-## stop_signal 注意事项
+## 优雅停止注意事项
 
-C++ 程序默认捕获 SIGTERM 会直接退出（默认行为）。如果需要在退出前做资源清理：
+launcher 停止应用用 `terminate()` + 2s 后强杀进程树兜底（Win `taskkill /F /T` / POSIX `killpg`）。
+C++ 程序默认收到 SIGTERM 会直接退出（默认行为）。如果需要在退出前做资源清理：
 
 ```cpp
 #include <csignal>

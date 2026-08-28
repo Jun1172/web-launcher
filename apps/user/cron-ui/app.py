@@ -15,10 +15,29 @@ import uuid
 import subprocess
 from datetime import datetime, timedelta
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from urllib.parse import urlparse
 
+
+def get_port():
+    """端口读取：优先 LAUNCHER_APP_PORT，缺失回退 app.json 的 port，均无效返回 0。"""
+    env_port = os.environ.get("LAUNCHER_APP_PORT")
+    if env_port:
+        try:
+            return int(env_port)
+        except ValueError:
+            pass
+    j = Path(__file__).resolve().parent / "app.json"
+    if j.exists():
+        try:
+            return int(json.loads(j.read_text(encoding="utf-8")).get("port", 0))
+        except Exception:
+            pass
+    return 0
+
+
 # ── 配置 ───────────────────────────────────────────────
-PORT = int(os.environ.get("LAUNCHER_APP_PORT", 8152))
+PORT = get_port()
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TASKS_FILE = os.path.join(APP_DIR, "tasks.json")
 IS_WIN = sys.platform == "win32"

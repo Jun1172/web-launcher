@@ -17,10 +17,13 @@
 import os
 import socket
 import subprocess
+import threading
 import time
 
 procs = {}         # {app_id: subprocess.Popen}
 actual_ports = {}  # {app_id: 实际监听端口（int）}
+_lock = threading.Lock()   # 保护 procs / actual_ports / _starting 的短操作
+_starting = set()          # 正在启动中的 app_id，防止同一应用并发重复启动
 
 
 def _alloc_port(preferred=None):
@@ -55,56 +58,64 @@ def _popen_kwargs():
 
 
 def open_app(app):
-    """启动应用进程，分配端口，通过 env 传给 app。返回 actual_port（int）或 None。
+    """启动应用进程，分配端口，通过 env 传给 app。返回 {"ok","running","port","reason"}。
 
-    - 无 cmd（stub）: 返回 None（无进程无端口）
+    - 无 cmd（stub）: {"ok": True, "running": False, "port": None}（无进程无端口）
     - 有 cmd 无 port: 启动进程，检查进程存活即可（无端口应用）
     - 有 cmd 有 port: 分配端口 → 传 env LAUNCHER_APP_PORT → Popen → 轮询端口就绪
-    - 启动失败（崩溃/超时）: 返回 None
+    - 启动失败（崩溃/超时/正在启动中）: {"ok": False, ...}
 
     app.json 的 port 字段作为"建议端口"，被占时 launcher 自动分配随机端口。
+    锁只保护短字典操作，Popen 与 6 秒端口轮询在锁外进行，避免阻塞其他请求。
     """
     if not app.get("cmd"):
-        return None  # stub 应用，无进程
+        return {"ok": True, "running": False, "port": None}  # stub 应用，无进程
     aid = app["id"]
-    p = procs.get(aid)
-    if p and p.poll() is None:
-        return actual_ports.get(aid)  # 已在运行，返回已分配端口
+    with _lock:
+        p = procs.get(aid)
+        if p and p.poll() is None:
+            return {"ok": True, "running": True, "port": actual_ports.get(aid)}
+        if aid in _starting:
+            return {"ok": False, "running": False, "port": None,
+                    "reason": "应用正在启动中，请稍候"}
+        _starting.add(aid)
 
-    has_port = bool(app.get("port"))
+    try:
+        if bool(app.get("port")):
+            # 有端口的应用：分配端口 → 传 env → 轮询端口就绪
+            port = _alloc_port(app.get("port"))
+            actual_ports[aid] = port
 
-    if has_port:
-        # 有端口的应用：分配端口 → 传 env → 轮询端口就绪
-        port = _alloc_port(app.get("port"))
-        actual_ports[aid] = port
+            env = os.environ.copy()
+            env["LAUNCHER_APP_PORT"] = str(port)
+            p = subprocess.Popen(app["cmd"], env=env, **_popen_kwargs())
+            procs[aid] = p
 
-        env = os.environ.copy()
-        env["LAUNCHER_APP_PORT"] = str(port)
-        p = subprocess.Popen(app["cmd"], env=env, **_popen_kwargs())
-        procs[aid] = p
-
-        # 轮询端口就绪，同时检查进程是否已崩溃
-        end = time.time() + 6
-        while time.time() < end:
-            if p.poll() is not None:
-                return None  # 进程崩溃
-            try:
-                with socket.create_connection(("127.0.0.1", int(port)), timeout=0.3):
-                    time.sleep(0.3)
-                    if p.poll() is None:
-                        return port
-                    return None  # 进程崩了
-            except OSError:
-                time.sleep(0.1)
-        return None  # 超时
-    else:
-        # 无端口的应用：启动进程，等待 0.5s 确认进程存活
-        p = subprocess.Popen(app["cmd"], **_popen_kwargs())
-        procs[aid] = p
-        time.sleep(0.5)
-        if p.poll() is None:
-            return True  # 进程存活，返回 True 表示启动成功（无端口）
-        return None  # 进程已崩溃
+            # 轮询端口就绪，同时检查进程是否已崩溃
+            end = time.time() + 6
+            while time.time() < end:
+                if p.poll() is not None:
+                    return {"ok": False, "running": False, "port": None}  # 进程崩溃
+                try:
+                    with socket.create_connection(("127.0.0.1", int(port)), timeout=0.3):
+                        time.sleep(0.3)
+                        if p.poll() is None:
+                            return {"ok": True, "running": True, "port": port}
+                        return {"ok": False, "running": False, "port": None}  # 进程崩了
+                except OSError:
+                    time.sleep(0.1)
+            return {"ok": False, "running": False, "port": None}  # 超时
+        else:
+            # 无端口的应用：启动进程，等待 0.5s 确认进程存活
+            p = subprocess.Popen(app["cmd"], **_popen_kwargs())
+            procs[aid] = p
+            time.sleep(0.5)
+            if p.poll() is None:
+                return {"ok": True, "running": True, "port": None}  # 进程存活
+            return {"ok": False, "running": False, "port": None}  # 进程已崩溃
+    finally:
+        with _lock:
+            _starting.discard(aid)
 
 
 def get_port(aid):
@@ -141,8 +152,10 @@ def close_app(aid):
     若只 terminate 主进程、主进程一退出就跳过强杀，子节点会被引用为孤儿继续运行。
     因此在 Windows 上直接 taskkill /F /T（连根带支整体杀），POSIX 上 SIGKILL 整个进程组。
     """
-    actual_ports.pop(aid, None)  # 清除端口映射
-    p = procs.pop(aid, None)
+    with _lock:
+        actual_ports.pop(aid, None)  # 清除端口映射
+        p = procs.pop(aid, None)
+        _starting.discard(aid)
     if p is None or p.poll() is not None:
         return
     root = p.pid
@@ -166,5 +179,7 @@ def close_app(aid):
 
 def terminate_all():
     """关闭所有 procs 中应用进程（用于 atexit 与全部清除）。"""
-    for aid in list(procs.keys()):
+    with _lock:
+        ids = list(procs.keys())
+    for aid in ids:
         close_app(aid)

@@ -11,9 +11,28 @@ import subprocess
 import sys
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from urllib.parse import urlparse
 
-PORT = int(os.environ.get("LAUNCHER_APP_PORT", 0))
+
+def get_port():
+    """端口读取：优先 LAUNCHER_APP_PORT，缺失回退 app.json 的 port，均无效返回 0。"""
+    env_port = os.environ.get("LAUNCHER_APP_PORT")
+    if env_port:
+        try:
+            return int(env_port)
+        except ValueError:
+            pass
+    j = Path(__file__).resolve().parent / "app.json"
+    if j.exists():
+        try:
+            return int(json.loads(j.read_text(encoding="utf-8")).get("port", 0))
+        except Exception:
+            pass
+    return 0
+
+
+PORT = get_port()
 IS_WIN = platform.system() == "Windows"
 
 # ── 优先用 psutil ──────────────────────────────────────────────

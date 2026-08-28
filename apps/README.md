@@ -26,7 +26,7 @@
 | `name` | string | ✅ | — | 显示名称 |
 | `version` | string | ✅ | — | 语义化版本号（`1.0.0`） |
 | `cmd` | string[] | ❌ | — | 启动命令；`.py`/`.pyw` 自动前缀 `sys.executable`，其他直接执行 |
-| `port` | int | ❌ | — | 端口；用于 TCP 就绪探测 + iframe URL；无端口则启动即视为就绪 |
+| `port` | int | ❌ | — | 建议端口（被占时 launcher 自动分配随机端口）；用于 TCP 就绪探测 + iframe URL；无端口则启动即视为就绪 |
 | `icon` | string | ❌ | 📦 | emoji 图标 |
 | `color` | string | ❌ | #999 | 主题色（CSS） |
 | `changelog` | string | ❌ | — | 版本说明 |
@@ -68,7 +68,7 @@
   "icon": "🔵",
   "color": "#3498db",
   "version": "1.0.0",
-  "port": 8140,
+  "port": 8124,
   "cmd": ["apps/user/cpp-hello/run.py"],
   "group": "user"
 }
@@ -124,23 +124,64 @@ python publish.py --group business
 
 ## 🔌 端口分配约定
 
-| 应用 | 端口 |
-|------|------|
-| store（应用商店） | 8100 |
-| todo（待办清单） | 8101 |
-| clock（番茄钟） | 8102 |
-| sysinfo（系统信息） | 8103 |
-| settings（设置） | 8104 |
-| hello（demo） | 8110 |
-| notes（demo） | 8112 |
-| weather（demo） | 8113 |
-| game2048（demo） | 8114 |
-| proc-demo（后台进程 demo） | — |
-| file-demo（占位 stub demo） | — |
-| system-monitor（监控 demo） | 8130 |
-| cpp-hello（C++ demo） | 8140 |
+`app.json.port` 只是"建议端口"：launcher 启动时优先尝试该端口，被占则自动分配随机空闲端口，并通过 `LAUNCHER_APP_PORT` 环境变量传给应用；应用单独运行时回退读取 `app.json.port`（见下方 get_port() 约定）。
 
-新应用建议从 8150 开始往上分配，避免和现有应用冲突。
+| 分组 | 应用 | 端口 |
+|------|------|------|
+| system | store（应用商店） | 8100 |
+| user | todo（待办清单） | 8101 |
+| system | clock（番茄钟） | 8102 |
+| system | sysinfo（系统信息） | 8103 |
+| system | settings（设置） | 8104 |
+| etws | ad-analysis（AD 数据解析） | 8116 |
+| etws | mqtt-monitor（状态监测） | 8150 |
+| system | md-viewer（文档查看） | 8154 |
+| etws | radar-viewer（雷达数据） | 8160 |
+| etws | channel-analyse（通道分析） | 8165 |
+| user | game2048（2048 小游戏） | 8121 |
+| user | hello（最简 demo） | 8122 |
+| user | weather（天气 demo） | 8123 |
+| user | cpp-hello（C++ demo） | 8124 |
+| user | system-monitor（监控 demo） | 8125 |
+| user | log-viewer（日志 demo） | 8151 |
+| user | cron-ui（定时任务 demo） | 8152 |
+| user | nixie-clock（数码管时钟） | 8168 |
+| ros | ros2-monitor（ROS2 监控） | 8201 |
+| ros | ros2-topic-inspector（话题） | 8203 |
+| ros | ros2-service（服务） | 8204 |
+| ros | ros2-param（参数） | 8205 |
+| ros | ros2-action（动作） | 8206 |
+| ros | ros2-graph（关系图） | 8207 |
+| ros | ros2-type-studio（类型/波形） | 8209 |
+
+端口段建议：system `8100-8199`、user `8100-8199`、etws `8110-8169`、ros `8201-8209`；**新应用从 8210 开始往上分配**，避免和现有应用冲突。
+
+### get_port() 端口读取约定
+
+应用侧统一用下面的模板读取端口（launcher 注入优先 → 回退 app.json → 均无效返回 0 由 OS 随机分配）：
+
+```python
+def get_port():
+    """端口读取：优先 LAUNCHER_APP_PORT，缺失回退 app.json 的 port，均无效返回 0。"""
+    env_port = os.environ.get("LAUNCHER_APP_PORT")
+    if env_port:
+        try:
+            return int(env_port)
+        except ValueError:
+            pass
+    j = Path(__file__).resolve().parent / "app.json"
+    if j.exists():
+        try:
+            return int(json.loads(j.read_text(encoding="utf-8")).get("port", 0))
+        except Exception:
+            pass
+    return 0
+
+
+PORT = get_port()
+```
+
+（`json` / `os` / `pathlib.Path` 需在文件顶部导入。）
 
 ## 📦 打包结构
 
@@ -181,7 +222,7 @@ hello-1.0.0.zip
   "id": "cpp-hello",
   "name": "C++ Hello",
   "version": "1.0.0",
-  "port": 8140,
+  "port": 8124,
   "cmd": ["apps/user/cpp-hello/run.py"]
 }
 ```

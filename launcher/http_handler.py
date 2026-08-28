@@ -30,6 +30,11 @@ from .app_operations import (
 from .repo import repo_index
 from .frontend import render_home_html, stub_html
 
+# /api/apps 允许暴露的应用字段白名单（避免把 app.json 中 env 等敏感字段发给前端）
+APP_FIELDS = ("id", "name", "icon", "color", "version", "cmd",
+              "port", "dock", "group", "system", "changelog",
+              "released", "port_conflict")
+
 
 class Handler(BaseHTTPRequestHandler):
     """Launcher HTTP 请求处理器。"""
@@ -66,17 +71,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             self._html(render_home_html(
                 config.LAUNCHER_TITLE, config.LAUNCHER_VERSION,
-                config.LAUNCHER_CHANGELOG, config.LAUNCHER_RELEASED,
             ))
             return
 
         # ── 应用列表（带运行状态 + 实际端口）──
         if path == "/api/apps":
             self._json([
-                {**a,
-                 "running": (procs.get(a["id"]) is not None
-                             and procs[a["id"]].poll() is None),
-                 "actual_port": pm_get_port(a["id"])}
+                {k: a[k] for k in APP_FIELDS if k in a} | {
+                    "running": (procs.get(a["id"]) is not None
+                                and procs[a["id"]].poll() is None),
+                    "actual_port": pm_get_port(a["id"]),
+                }
                 for a in app_registry.REGISTRY
             ])
             return
@@ -153,25 +158,24 @@ class Handler(BaseHTTPRequestHandler):
             aid = q.get("id", [None])[0]
             app = find_app(aid)
             if not app:
-                self._json({"ok": False, "url": None})
+                self._json({"ok": False, "url": None, "reason": "应用不存在"})
                 return
-            # launcher 分配端口 + 启动 + 等待就绪，返回 actual_port / True / None
+            # launcher 分配端口 + 启动 + 等待就绪，返回结构化结果 {"ok","running","port"}
             result = pm_open_app(app)
-            has_cmd = bool(app.get("cmd"))
-            if not has_cmd:
+            if not app.get("cmd"):
                 # stub 应用（无进程，纯占位页）
                 self._json({"ok": True, "url": f"/stub?id={app['id']}", "reason": None})
-            elif result is True:
-                # 无端口应用，进程已启动（无 iframe URL）
-                self._json({"ok": True, "url": None, "reason": None})
-            elif result:
-                # 有端口应用启动成功，用 actual_port 生成 iframe URL
-                port = result
-                self._json({"ok": True, "url": f"http://127.0.0.1:{port}", "reason": None})
+            elif result["ok"]:
+                port = result.get("port")
+                # 有端口则返回 iframe URL，无端口应用返回 url=None
+                self._json({"ok": True,
+                            "url": f"http://127.0.0.1:{port}" if port else None,
+                            "reason": None})
             else:
-                # 启动失败（进程崩溃或端口被占）
+                # 启动失败（进程崩溃/端口被占/正在启动中）
                 self._json({"ok": False, "url": None,
-                            "reason": "应用启动失败（进程崩溃或端口被占）"})
+                            "reason": result.get("reason")
+                                      or "应用启动失败（进程崩溃或端口被占）"})
             return
 
         # ── 关闭应用（进程树）──
@@ -203,11 +207,16 @@ class Handler(BaseHTTPRequestHandler):
             self._html(stub_html(app))
             return
 
-        # ── 404 fallback: 重定向回首页 ──
-        self._html(render_home_html(
-            config.LAUNCHER_TITLE, config.LAUNCHER_VERSION,
-            config.LAUNCHER_CHANGELOG, config.LAUNCHER_RELEASED,
-        ))
+        # ── 404 fallback ──
+        self._html(
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            "<title>404 Not Found</title></head>"
+            "<body style='font-family:system-ui;display:flex;align-items:center;"
+            "justify-content:center;height:100vh;margin:0;color:#888'>"
+            "<div style='text-align:center'><h1 style='margin:0'>404</h1>"
+            "<p>页面不存在</p></div></body></html>",
+            status=404,
+        )
 
     def do_POST(self):  # noqa: N802
         u = urlparse(self.path)

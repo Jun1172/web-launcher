@@ -1,7 +1,7 @@
 """frontend - 首页 HTML 资源、关于模态、stub 应用占位页
 
 导出:
-- render_home_html(title, version, changelog, released): 返回完整首页字符串
+- render_home_html(title, version): 返回完整首页字符串
 - stub_html(app_meta): 返回无进程应用的占位页
 
 前端增强点（FR-4.1, FR-3.x）:
@@ -140,12 +140,8 @@ justify-content:center;height:100vh;margin:0;background:linear-gradient(160deg,{
 <body><div class="ic">{icon}</div><h2>{name}</h2><p>占位应用 · 待接入</p></body></html>"""
 
 
-def render_home_html(title, version, changelog=None, released=None):
-    """构造桌面首页完整 HTML（按 layout.json 的 layout 字段选 layouts/<id>.html）。
-
-    changelog/released 参数保留以兼容旧调用方，但当前布局模板不再使用
-    __CHANGELOG_HTML__ / __RELEASED__ 占位符（关于模态已移除）。
-    """
+def render_home_html(title, version):
+    """构造桌面首页完整 HTML（按 layout.json 的 layout 字段选 layouts/<id>.html）。"""
     esc_title = _escape(title)
     esc_ver = _escape(version)
     layout_id = _get_layout()

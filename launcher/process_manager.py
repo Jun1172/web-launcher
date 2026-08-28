@@ -124,11 +124,16 @@ def get_port(aid):
 
 
 def _kill_tree_nt(pid):
-    """Windows: taskkill /F /T /PID 杀进程树。"""
+    """Windows: taskkill /F /T /PID 杀进程树。
+
+    必须带 CREATE_NO_WINDOW：launcher 以无控制台 exe 运行时，直接跑
+    控制台子进程 taskkill 会闪出一个命令行窗口（点退出时的黑窗）。
+    """
     try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         subprocess.run(
             ["taskkill", "/F", "/T", "/PID", str(pid)],
-            capture_output=True, timeout=5,
+            capture_output=True, timeout=5, creationflags=flags,
         )
     except Exception:
         pass

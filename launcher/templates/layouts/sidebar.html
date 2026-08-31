@@ -4,20 +4,22 @@
 <style>
 __SHARED_CSS__
 
-/* ══════════════ 侧边栏式布局专属样式 ══════════════ */
+/* ══════════════ 侧边栏式布局（玻璃桌面版） ══════════════
+   左侧毛玻璃侧边栏 + 右侧居中大时钟，无实色面板，应用主色晕染图标。 */
 
 /* 覆盖 #home 默认纵向布局为左右分栏 */
-#home { flex-direction: row; padding: 60px 0 0; gap: 0; }
+#home { flex-direction: row; padding: 48px 0 0; gap: 0; }
 
 /* ── 左侧侧边栏 ── */
 #sideBar {
-    flex: 0 0 260px;
+    flex: 0 0 280px;
     height: 100%;
     background: var(--glass-bg);
-    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
     border-right: 1px solid var(--glass-border);
     display: flex; flex-direction: column;
     overflow: hidden;
+    box-shadow: 12px 0 40px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 /* 顶部 logo / 标题区 */
@@ -28,11 +30,14 @@ __SHARED_CSS__
     border-bottom: 1px solid var(--glass-border);
 }
 .sideLogo {
-    width: 40px; height: 40px; border-radius: 12px;
-    background: var(--accent);
+    width: 42px; height: 42px; border-radius: 14px;
+    background:
+        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent) 45%, transparent) 0%, transparent 60%),
+        linear-gradient(160deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%);
     display: flex; align-items: center; justify-content: center;
     font-size: 22px;
-    box-shadow: 0 4px 12px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
 }
 .sideTitle {
     font-size: 15px; font-weight: 600; color: var(--text-primary);
@@ -55,11 +60,11 @@ __SHARED_CSS__
 }
 .sideSectionLabel {
     font-size: 11px; color: var(--text-secondary);
-    padding: 10px 20px 6px; font-weight: 600;
+    padding: 12px 20px 6px; font-weight: 600;
     letter-spacing: 1.5px; text-transform: uppercase;
 }
 
-/* 每个应用项（class="icon" 供 _shared.js 全局 click 委托识别） */
+/* 每个应用项 */
 .icon {
     position: relative;
     display: flex; align-items: center; gap: 12px;
@@ -70,22 +75,27 @@ __SHARED_CSS__
 .icon:hover { background: var(--glass-bg-hover); }
 .icon:active { background: var(--glass-border-hover); }
 
-/* 图标盒 36x36 */
+/* 图标盒 38x38 */
 .icon .sideIcon {
     position: relative;
-    flex: 0 0 36px;
-    width: 36px; height: 36px; border-radius: 10px;
+    flex: 0 0 38px;
+    width: 38px; height: 38px; border-radius: 11px;
     display: flex; align-items: center; justify-content: center;
     font-size: 20px;
-    background: var(--glass-bg);
+    background:
+        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 42%, transparent) 0%, transparent 65%),
+        linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%);
     border: 1px solid var(--glass-border);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    box-shadow: var(--tile-shadow), inset 0 1px 0 rgba(255,255,255,0.08);
     transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    overflow: hidden;
 }
 .icon:hover .sideIcon {
-    transform: scale(1.08);
+    transform: scale(1.1);
     border-color: var(--glass-border-hover);
+    box-shadow: var(--tile-shadow-hover), 0 0 18px color-mix(in srgb, var(--c) 25%, transparent), inset 0 1px 0 rgba(255,255,255,0.12);
 }
+.icon:hover .sideIcon::before { left: 150%; }
 /* 系统应用角标 */
 .icon.system .sideIcon::after {
     content: ""; position: absolute; top: -2px; right: -2px;
@@ -102,15 +112,22 @@ __SHARED_CSS__
     font-weight: 500; letter-spacing: 0.3px;
 }
 
-/* 运行中：左侧高亮条 */
+/* 运行中：左侧高亮条 + 背景微染 */
 .icon.running::before {
     content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
     width: 3px; border-radius: 0 3px 3px 0;
     background: var(--success);
     box-shadow: 0 0 10px var(--success);
 }
-.icon.running { background: rgba(52, 211, 153, 0.08); }
+.icon.running { background: color-mix(in srgb, var(--success) 8%, transparent); }
 .icon.running .sideIcon { border-color: var(--success); }
+
+/* 微光扫过 */
+.sideIcon::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+    transform: skewX(-25deg); transition: left 0.5s;
+}
 
 /* ── 右侧大区 ── */
 #mainArea {
@@ -121,19 +138,19 @@ __SHARED_CSS__
 }
 #cw { text-align: center; max-width: 640px; }
 #cwGreeting {
-    font-size: 16px; color: var(--text-secondary);
-    margin-bottom: 14px; font-weight: 500; letter-spacing: 1px;
+    font-size: 13px; color: var(--text-secondary);
+    margin-bottom: 8px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase;
 }
 #cwTime {
-    font-size: 96px; font-weight: 200; letter-spacing: -3px; line-height: 1;
+    font-size: 92px; font-weight: 300; letter-spacing: -3px; line-height: 1;
     font-variant-numeric: tabular-nums;
     background: linear-gradient(to bottom, var(--clock-gradient-top) 0%, var(--clock-gradient-bottom) 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.2));
+    filter: drop-shadow(0 4px 20px rgba(0,0,0,0.25)) drop-shadow(0 0 36px var(--clock-glow));
 }
 #cwDate {
-    font-size: 16px; color: var(--text-secondary);
-    margin-top: 16px; font-weight: 500;
+    font-size: 15px; color: var(--text-secondary);
+    margin-top: 14px; font-weight: 500; letter-spacing: 0.5px;
 }
 .cwHint {
     font-size: 13px; color: var(--text-secondary);
@@ -145,12 +162,15 @@ __SHARED_CSS__
 .tile {
     width: 64px; height: 64px; border-radius: var(--tile-radius);
     font-size: 32px; display: flex; align-items: center; justify-content: center;
-    background: var(--glass-bg); border: 1px solid var(--glass-border);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    background:
+        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 35%, transparent) 0%, transparent 65%),
+        linear-gradient(160deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--tile-shadow);
 }
 .name {
     font-size: 14px; color: var(--text-primary); font-weight: 500;
-    text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.4);
     width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 </style>
@@ -260,7 +280,7 @@ function buildHome(){
 
 function sideItem(a){
   const d=document.createElement('div');
-  d.className='icon'+(a.system?' system':'');
+  d.className='icon'+(a.system?' system':'')+(a.running?' running':'');
   d.dataset.id=a.id;
   d.innerHTML=
     '<div class="sideIcon" style="--c:'+a.color+'">'+a.icon+'</div>'+

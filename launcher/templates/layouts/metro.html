@@ -4,48 +4,65 @@
 <style>
 __SHARED_CSS__
 
-/* ══════════════ 磁贴式布局专属样式（Win8 Metro 风） ══════════════ */
+/* ══════════════ 磁贴式布局（玻璃 Metro 版） ══════════════
+   保留 Metro 式错落排布，但磁贴使用主色晕染 + 毛玻璃反光，
+   避免原来大块纯色带来的卡通感。 */
 
-/* 顶部小时钟问候区（比九宫格更紧凑，让磁贴占主） */
-#cw { text-align:center; padding:4px 20px 14px; flex-shrink:0; }
-#cwGreeting { font-size:13px; color:var(--text-secondary); margin-bottom:4px; font-weight:500; letter-spacing:0.5px; }
+#home {
+    padding: 48px 0 0;
+    align-items: stretch;
+}
+
+/* 顶部小时钟问候区 */
+#cw { text-align:center; padding:8px 20px 18px; flex-shrink:0; }
+#cwGreeting { font-size:13px; color:var(--text-secondary); margin-bottom:4px; font-weight:500; letter-spacing:1px; }
 #cwTime {
-    font-size:38px; font-weight:300; letter-spacing:-1px; line-height:1;
+    font-size:42px; font-weight:300; letter-spacing:-1px; line-height:1;
     font-variant-numeric: tabular-nums;
     background: linear-gradient(to bottom, var(--clock-gradient-top) 0%, var(--clock-gradient-bottom) 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.15));
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.15)) drop-shadow(0 0 20px var(--clock-glow));
 }
-#cwDate { font-size:12px; color:var(--text-secondary); margin-top:5px; font-weight:500; }
+#cwDate { font-size:12px; color:var(--text-secondary); margin-top:6px; font-weight:500; letter-spacing:0.5px; }
 
-/* 磁贴网格容器：CSS grid，可垂直滚动 */
+/* 磁贴网格容器：响应式列数，铺满可用宽度 */
 #tiles {
     flex:1; overflow-y:auto; overflow-x:hidden;
     display:grid;
-    grid-template-columns: repeat(auto-fill, 120px);
+    grid-template-columns: repeat(var(--cols, 6), 120px);
     grid-auto-rows: 120px;
-    gap:6px;
+    gap:8px;
     justify-content:center;
     align-content:start;
-    padding:8px 24px 80px;
+    padding:8px 28px 80px;
     touch-action:pan-y;
 }
 
-/* 磁贴基类：彩色背景 + 居中图标 + 底部白色名称
-   .icon 既是网格 item，也是点击委托目标（_shared.js 依赖 class=.icon + data-id） */
+/* 磁贴基类：主色晕染 + 毛玻璃 */
 .icon {
     position:relative; overflow:hidden; cursor:pointer;
-    background: var(--c, #555);
-    border-radius:6px;
+    border-radius:10px;
     color:#fff;
     display:flex; align-items:center; justify-content:center;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
-    transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease;
+    background:
+        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 60%, transparent) 0%, transparent 55%),
+        linear-gradient(160deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 100%),
+        color-mix(in srgb, var(--c) 22%, rgba(40,44,52,0.45));
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.12);
+    transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
     user-select:none;
 }
-/* 大磁贴 2x2：dock 应用（≈240x240） */
-.icon.lg { grid-row:span 2; grid-column:span 2; border-radius:10px; }
-/* 中磁贴 2x1：系统应用（横向 ≈240x120） */
+.icon::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    transform: skewX(-25deg); transition: left 0.6s;
+}
+.icon:hover::before { left: 150%; }
+/* 大磁贴 2x2：dock 应用 */
+.icon.lg { grid-row:span 2; grid-column:span 2; border-radius:14px; }
+/* 中磁贴 2x1：系统应用 */
 .icon.md { grid-column:span 2; }
 
 /* 居中大图标 */
@@ -68,10 +85,10 @@ __SHARED_CSS__
 }
 .icon.lg .name { font-size:15px; left:14px; right:14px; bottom:14px; }
 
-/* hover：轻微上浮 + 加深阴影 */
+/* hover：轻微上浮 + 光晕 */
 .icon:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 22px rgba(0,0,0,0.28);
+    transform: translateY(-4px);
+    box-shadow: 0 14px 28px rgba(0,0,0,0.28), 0 0 32px color-mix(in srgb, var(--c) 28%, transparent), inset 0 1px 0 rgba(255,255,255,0.18);
     z-index:2;
 }
 .icon:active { transform: scale(0.97); transition: transform 0.08s; }
@@ -152,6 +169,9 @@ __SHARED_JS__
 <script>
 /* ══════════════ 磁贴式布局专属 JS ══════════════ */
 
+/* 磁贴列数参数 */
+const METRO={TILE:120, GAP:8, PAD_X:28};
+
 /* 根据 APPS 渲染磁贴：
    - dock 应用 → 大磁贴 2x2（置顶）
    - 系统应用 → 中磁贴 2x1（横向）
@@ -159,6 +179,8 @@ __SHARED_JS__
    _shared.js 在 poll().then() 后会自动调用 buildHome()。 */
 function buildHome(){
   const box=$('tiles'); if(!box)return;
+  const cols=Math.max(2, Math.floor((box.clientWidth-METRO.PAD_X*2+METRO.GAP)/(METRO.TILE+METRO.GAP)));
+  box.style.setProperty('--cols', cols);
   box.innerHTML='';
 
   APPS.filter(a=>a.dock).forEach(a=>box.appendChild(tileEl(a,'lg')));

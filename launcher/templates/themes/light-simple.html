@@ -1,48 +1,48 @@
 <style>
-/* ── light-simple：浅色简约风（柔和不刺眼版） ──
-   柔和冷灰背景（避免纯白刺眼），深灰文字，蓝色 accent。
-   参考 macOS 浅色：背景偏中性灰而非纯白，降低对比度疲劳感。 */
+/* ── light-simple：浅灰科技风（柔和不刺眼）──
+   以中性冷灰为底，弱极光晕染，玻璃反光但低饱和，避免纯白刺眼。 */
 [data-theme="light-simple"] {
-    --glass-bg: rgba(0, 0, 0, 0.05);
-    --glass-bg-hover: rgba(0, 0, 0, 0.09);
-    --glass-border: rgba(0, 0, 0, 0.12);
-    --glass-border-hover: rgba(0, 0, 0, 0.22);
-    --text-primary: #2d3748;
-    --text-secondary: #5a6577;
-    --accent: #6366f1;
-    --accent-glow: rgba(99, 102, 241, 0.3);
+    --glass-bg: rgba(255, 255, 255, 0.34);
+    --glass-bg-hover: rgba(255, 255, 255, 0.52);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --glass-border-hover: rgba(0, 0, 0, 0.16);
+    --text-primary: #2a303c;
+    --text-secondary: #6b7280;
+    --accent: #4f46e5;
+    --accent-glow: rgba(79, 70, 229, 0.25);
     --success: #10b981;
     --danger: #ef4444;
-    --bg-base: #cdd3dc;
-    --bg-aurora-1: rgba(129, 140, 248, 0.18);
-    --bg-aurora-2: rgba(168, 85, 247, 0.15);
-    --bg-aurora-3: rgba(236, 72, 153, 0.12);
-    --bg-aurora-4: rgba(34, 211, 238, 0.15);
-    --statusbar-bg: rgba(205, 211, 220, 0.72);
-    --panel-bg: rgba(205, 211, 220, 0.88);
-    --page-bg: rgba(205, 211, 220, 0.98);
-    --modal-mask-bg: rgba(15, 23, 42, 0.4);
-    --modal-bg: rgba(225, 230, 238, 0.9);
-    --toast-bg: rgba(225, 230, 238, 0.95);
-    --dock-bg: rgba(215, 221, 230, 0.55);
-    --dock-border: rgba(0, 0, 0, 0.1);
-    --clock-gradient-top: #2d3748;
-    --clock-gradient-bottom: #5a6577;
-    --dot-bg: rgba(0, 0, 0, 0.18);
-    --dot-on-bg: #2d3748;
-    --dot-on-glow: rgba(45, 55, 72, 0.3);
-    --homebar-bg: rgba(0, 0, 0, 0.3);
-    --homebar-hover-bg: rgba(0, 0, 0, 0.6);
-    --homebar-glow: rgba(0, 0, 0, 0.2);
-    --scrollbar-thumb: rgba(0, 0, 0, 0.18);
-    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
-    --tile-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-    --tile-shadow-hover: 0 16px 28px rgba(0, 0, 0, 0.14);
-    --dock-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
-    --modal-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.22);
-    --toast-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.18);
-    --layrow-bg: rgba(0, 0, 0, 0.05);
-    --tile-radius: 22px;
+    --bg-base: #dfe4eb;
+    --bg-aurora-1: rgba(99, 102, 241, 0.14);
+    --bg-aurora-2: rgba(139, 92, 246, 0.10);
+    --bg-aurora-3: rgba(14, 165, 233, 0.10);
+    --bg-aurora-4: rgba(236, 72, 153, 0.07);
+    --statusbar-bg: rgba(223, 228, 235, 0.72);
+    --panel-bg: rgba(235, 239, 244, 0.82);
+    --page-bg: rgba(223, 228, 235, 0.96);
+    --modal-mask-bg: rgba(15, 23, 42, 0.32);
+    --modal-bg: rgba(242, 245, 248, 0.86);
+    --toast-bg: rgba(242, 245, 248, 0.94);
+    --dock-bg: rgba(255, 255, 255, 0.45);
+    --dock-border: rgba(0, 0, 0, 0.08);
+    --clock-gradient-top: #374151;
+    --clock-gradient-bottom: #4f46e5;
+    --clock-glow: rgba(79, 70, 229, 0.15);
+    --dot-bg: rgba(0, 0, 0, 0.15);
+    --dot-on-bg: #4f46e5;
+    --dot-on-glow: rgba(79, 70, 229, 0.25);
+    --homebar-bg: rgba(0, 0, 0, 0.22);
+    --homebar-hover-bg: rgba(0, 0, 0, 0.45);
+    --homebar-glow: rgba(0, 0, 0, 0.12);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.24);
+    --tile-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    --tile-shadow-hover: 0 16px 28px rgba(0, 0, 0, 0.13);
+    --dock-shadow: 0 16px 38px rgba(0, 0, 0, 0.12);
+    --modal-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.16);
+    --toast-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.12);
+    --layrow-bg: rgba(255, 255, 255, 0.42);
+    --tile-radius: 18px;
     --dock-radius: 26px;
 }
 </style>

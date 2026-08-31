@@ -4,42 +4,107 @@
 <style>
 __SHARED_CSS__
 
-/* ══════════════ 九宫格布局专属样式 ══════════════ */
+/* ══════════════ 九宫格布局（全屏玻璃桌面版） ══════════════
+   视觉参考：图标直接铺在极光背景上，Dock 浮底，无中央灰色面板 */
 
-/* 放大版时钟与问候区 */
-#cw { text-align:center; margin-bottom:60px; padding:0 20px; }
-#cwGreeting { font-size:16px; color:var(--text-secondary); margin-bottom:8px; font-weight:500; letter-spacing:1px; }
+#home {
+    padding: 48px 0 0;
+    align-items: center;
+}
+
+/* 全屏内容区：承载时钟、图标网格与 Dock */
+#desktop {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 0 24px 12px;
+    overflow: hidden;
+}
+
+/* 大时钟区 */
+#cw {
+    text-align: center;
+    margin-bottom: 22px;
+    padding: 0 20px;
+    flex-shrink: 0;
+}
+#cwGreeting {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
 #cwTime {
-    font-size:76px; font-weight:200; letter-spacing:-2px; line-height:1;
+    font-size: 92px;
+    font-weight: 300;
+    letter-spacing: -3px;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
     background: linear-gradient(to bottom, var(--clock-gradient-top) 0%, var(--clock-gradient-bottom) 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.2));
+    filter: drop-shadow(0 4px 20px rgba(0,0,0,0.35)) drop-shadow(0 0 40px var(--clock-glow));
 }
-#cwDate { font-size:15px; color:var(--text-secondary); margin-top:10px; font-weight:500; }
+#cwDate {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
 
-#pager { flex:1; overflow:hidden; display:flex; flex-direction:column; justify-content:center; }
-#screens { display:flex; height:100%; transition:transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+/* 分页容器 */
+#pager {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+#screens {
+    display: flex;
+    height: 100%;
+    transition: transform 0.45s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
 
-/* 核心布局：响应式网格（列数由 JS 统一计算后以 inline style 应用，
-   确保分页容量与实际渲染列数严格一致，避免拉伸窗口时两页混排） */
+/* 核心布局：响应式网格（列数由 JS 统一计算后以 inline style 应用） */
 .screen {
-    flex:0 0 100%;
-    display:grid;
+    flex: 0 0 100%;
+    display: grid;
     grid-template-columns: repeat(6, 1fr);
-    gap:24px;
+    gap: 18px;
     align-content: center;
     justify-items: center;
     padding: 0 40px;
     overflow: hidden;
 }
 
-.icon { display:flex; flex-direction:column; align-items:center; gap:14px; cursor:pointer; position:relative; width:110px; }
+.icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    position: relative;
+    width: 92px;
+}
 .tile {
-    position:relative; width:84px; height:84px; border-radius:var(--tile-radius); font-size:38px;
-    display:flex; align-items:center; justify-content:center;
+    position: relative;
+    width: 68px;
+    height: 68px;
+    border-radius: var(--tile-radius);
+    font-size: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: var(--glass-bg);
-    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    background:
+        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 42%, transparent) 0%, transparent 65%),
+        linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
     box-shadow: var(--tile-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -47,54 +112,109 @@ __SHARED_CSS__
 }
 .tile::before {
     content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-    transform: skewX(-25deg); transition: left 0.5s;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+    transform: skewX(-25deg); transition: left 0.55s;
 }
 .icon:hover .tile::before { left: 150%; }
 .icon:hover .tile {
     background: var(--glass-bg-hover);
+    background:
+        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 60%, transparent) 0%, transparent 60%),
+        linear-gradient(160deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.05) 100%);
     border-color: var(--glass-border-hover);
-    transform: translateY(-8px) scale(1.05);
-    box-shadow: var(--tile-shadow-hover), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    transform: translateY(-6px) scale(1.08);
+    box-shadow: var(--tile-shadow-hover), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    box-shadow: var(--tile-shadow-hover), 0 0 28px color-mix(in srgb, var(--c) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 .icon:active .tile { transform: scale(0.95); transition: transform 0.1s; }
 
 .name {
-    font-size:14px; color:var(--text-primary); width:100%; overflow:hidden;
-    text-overflow:ellipsis; white-space:nowrap; text-align:center;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.5); padding: 0 4px;
-    font-weight: 500; letter-spacing: 0.5px;
+    font-size: 12px;
+    color: var(--text-primary);
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.45);
+    padding: 0 2px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }
 .tile.running::after {
-    content:""; position:absolute; bottom:-10px; left:50%; transform:translateX(-50%);
-    width:6px; height:6px; border-radius:50%; background:var(--success);
+    content: "";
+    position: absolute;
+    bottom: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--success);
     box-shadow: 0 0 10px var(--success);
 }
-.tile.system::before {
-    content:""; position:absolute; top:6px; right:6px; width:6px; height:6px; border-radius:50%;
-    background:var(--accent); box-shadow: 0 0 10px var(--accent-glow); z-index: 2;
+.tile.system::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+    z-index: 2;
 }
 
-/* 优化的分页指示器 */
-#dots { display:flex; justify-content:center; gap:8px; padding:28px 0 24px; }
-#dots i { width:6px; height:6px; border-radius:50%; background:var(--dot-bg); transition:all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-#dots i.on { background:var(--dot-on-bg); width:28px; border-radius:3px; box-shadow:0 0 12px var(--dot-on-glow); }
+/* 分页指示器 */
+#dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 18px 0 8px;
+    flex-shrink: 0;
+}
+#dots i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dot-bg);
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#dots i.on {
+    background: var(--dot-on-bg);
+    width: 26px;
+    border-radius: 3px;
+    box-shadow: 0 0 12px var(--dot-on-glow);
+}
 
-/* 🌟 放大版 Dock 栏 */
+/* 底部 Dock */
 #dock {
-    margin:0 auto 40px; height:92px; border-radius:var(--dock-radius);
+    margin: 0 auto 24px;
+    height: 72px;
+    border-radius: var(--dock-radius);
     background: var(--dock-bg);
-    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
     border: 1px solid var(--dock-border);
     box-shadow: var(--dock-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    display:flex; align-items:center; justify-content:center; gap: 20px;
-    padding: 0 24px;
-    max-width: 90%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 0 20px;
+    max-width: 88%;
 }
 #dock .icon { width: auto; }
-#dock .tile { width:68px; height:68px; font-size:34px; border-radius:18px; }
-#dock .icon:hover .tile { transform: translateY(-12px) scale(1.25); } /* 更夸张的悬停放大 */
-#dock .name { display:none; }
+#dock .tile {
+    width: 54px;
+    height: 54px;
+    font-size: 28px;
+    border-radius: 16px;
+}
+#dock .icon:hover .tile {
+    transform: translateY(-10px) scale(1.22);
+}
+#dock .name { display: none; }
 </style>
 __THEME_BLOCKS__
 </head><body>
@@ -115,20 +235,22 @@ __THEME_BLOCKS__
 </div>
 
 <div id="home">
-  <div id="cw">
-    <div id="cwGreeting">欢迎使用</div>
-    <div id="cwTime">--:--</div>
-    <div id="cwDate"></div>
+  <div id="desktop">
+    <div id="cw">
+      <div id="cwGreeting">欢迎使用</div>
+      <div id="cwTime">--:--</div>
+      <div id="cwDate"></div>
+    </div>
+    <div id="pager"><div id="screens"></div></div>
+    <div id="dots"></div>
+    <div id="dock"></div>
   </div>
-  <div id="pager"><div id="screens"></div></div>
-  <div id="dots"></div>
-  <div id="dock"></div>
 </div>
 
 <!-- 最近任务面板 -->
 <div id="recents" class="panel">
   <div class="pHead"><span>最近任务</span>
-    <span><button id="clearAll">全部清除</button><button id="closeR">▼ 收起</button></span></div>
+    <span><button id="clearAll">全部清除</button><button id="closeR">收起</button></span></div>
   <div id="rCards"></div>
   <div class="rTip">上滑卡片清除单个 · 空白处下滑关闭 · 点击卡片回到应用</div>
 </div>
@@ -136,22 +258,22 @@ __THEME_BLOCKS__
 <!-- 布局编辑模态 -->
 <div id="layoutMask" class="modalMask">
   <div class="modal" role="dialog" aria-label="布局编辑">
-    <h2>🗂️ 布局编辑</h2>
+    <h2>布局编辑</h2>
     <div style="font-size:13px;color:var(--text-secondary);line-height:1.6">
       切换桌面布局风格与配色；勾选 <b style="color:var(--text-primary)">Dock</b> 常驻底部，勾选 <b style="color:var(--danger)">隐藏</b> 从桌面移除。修改后保存即时生效。
     </div>
     <div class="layoutRow">
-      <div class="themeLabel">📐 布局风格</div>
+      <div class="themeLabel">布局风格</div>
       <div id="layoutPicker" class="layoutList"></div>
     </div>
     <div class="themeRow">
-      <div class="themeLabel">🎨 桌面风格</div>
+      <div class="themeLabel">桌面风格</div>
       <div id="themeList" class="themeList"></div>
     </div>
     <div id="layList" class="layList"></div>
     <div class="foot">
       <button class="btnDef" onclick="closeLayout()">取消</button>
-      <button class="btnPri" onclick="saveLayout()">💾 保存</button>
+      <button class="btnPri" onclick="saveLayout()">保存</button>
     </div>
   </div>
 </div>
@@ -169,7 +291,7 @@ let pageIdx=0, screenCount=0;
 /* 列数/行数只在此处计算，再 inline 应用到每个 .screen 的
    grid-template-columns —— 与 CSS 的 padding/gap/最小列宽用同一套参数，
    保证每页图标容量 = 实际能排下的容量，窗口拉伸时不会错页混排。 */
-const GRID={PAD_X:40, GAP:24, COL_MIN:110, ROW_H:118}; // ROW_H: tile 84 + gap 14 + name ~20
+const GRID={PAD_X:40, GAP:18, COL_MIN:92, ROW_H:96}; // ROW_H: tile 68 + gap 10 + name ~18
 
 function buildHome(){
   const homeApps=APPS.filter(a=>!a.dock);

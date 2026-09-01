@@ -64,7 +64,6 @@ __SHARED_CSS__
         inset 0 -14px 26px rgba(0,0,0,0.16);
     transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease, border-color 0.22s ease;
     user-select:none;
-    animation: tile-pop 0.5s cubic-bezier(0.22,1.2,0.36,1) backwards;
 }
 /* 悬停扫光 */
 .icon::before {
@@ -125,6 +124,24 @@ __SHARED_CSS__
     0%, 100% { box-shadow: 0 0 6px rgba(255,255,255,0.9), 0 0 14px rgba(255,255,255,0.4); }
     50%      { box-shadow: 0 0 12px rgba(255,255,255,1), 0 0 26px rgba(255,255,255,0.75); }
 }
+
+/* 周期微光：磁贴每隔 8~14s 泛起一层主色光（JS 随机相位），
+   让静止的桌面持续有"活"的细节，不喧宾夺主 */
+@keyframes tile-shimmer {
+    0%, 92%, 100% { box-shadow:
+        0 6px 14px rgba(0,0,0,0.22),
+        0 1px 3px rgba(0,0,0,0.28),
+        inset 0 1px 0 rgba(255,255,255,0.22),
+        inset 0 -14px 26px rgba(0,0,0,0.16); }
+    96% { box-shadow:
+        0 6px 14px rgba(0,0,0,0.22),
+        0 0 34px color-mix(in srgb, var(--c) 45%, transparent),
+        inset 0 1px 0 rgba(255,255,255,0.30),
+        inset 0 -14px 26px rgba(0,0,0,0.10); }
+}
+.icon.shimmer { animation: tile-shimmer var(--shimmer-t, 10s) ease-in-out var(--shimmer-d, 0s) infinite; }
+/* hover 态关掉 shimmer，避免和 hover 光晕打架 */
+.icon.shimmer:hover { animation-play-state: paused; }
 </style>
 __THEME_BLOCKS__
 </head><body>
@@ -223,6 +240,16 @@ function tileEl(a, size, idx){
   d.style.setProperty('--c', a.color||'#555');
   /* 入场依次弹出（上限 24 项，避免长列表等待） */
   d.style.animationDelay=Math.min(idx,24)*22+'ms';
+  /* 周期微光：每块磁贴独立周期与相位，桌面持续有细节在动 */
+  let reduce=false; try{reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}
+  if(!reduce){
+    d.style.setProperty('--shimmer-t',(8+Math.random()*6).toFixed(1)+'s');
+    d.style.setProperty('--shimmer-d',(-Math.random()*12).toFixed(1)+'s');
+    d.classList.add('shimmer');
+    /* shimmer 与入场 tile-pop 是两个 animation，用 animation 简写会互相覆盖 → 分开赋值 */
+    d.style.animation='tile-pop 0.5s cubic-bezier(0.22,1.2,0.36,1) backwards '+d.style.animationDelay+
+      ', tile-shimmer var(--shimmer-t) ease-in-out var(--shimmer-d) infinite';
+  }
   if(a.system)d.classList.add('system');
   d.innerHTML='<span class="ic">'+a.icon+'</span><span class="name">'+esc(a.name)+'</span>';
   return d;

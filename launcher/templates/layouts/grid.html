@@ -128,6 +128,14 @@ __SHARED_CSS__
 }
 .icon:active .tile { transform: scale(0.95); transition: transform 0.1s; }
 
+/* 周期微光：与 metro 相同机制，图标偶尔泛起主色光 */
+@keyframes tile-glow-cycle {
+    0%, 92%, 100% { box-shadow: var(--tile-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+    96% { box-shadow: 0 0 26px color-mix(in srgb, var(--c) 42%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.16); }
+}
+.tile.fx-glow-cycle { animation: tile-glow-cycle var(--shimmer-t, 10s) ease-in-out var(--shimmer-d, 0s) infinite; }
+.tile.fx-glow-cycle:hover { animation-play-state: paused; }
+
 .name {
     font-size: 12px;
     color: var(--text-primary);
@@ -319,8 +327,12 @@ function buildHome(){
 
 function iconEl(a){
   const d=document.createElement('div');d.className='icon';d.dataset.id=a.id;
-  const sys=a.system?'<div class="tile system" style="--c:'+a.color+'">'+a.icon+'</div>':
-    '<div class="tile" style="--c:'+a.color+'">'+a.icon+'</div>';
+  let reduce=false; try{reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}
+  const fx=(!reduce)?' fx-glow-cycle" style="--shimmer-t:'+(8+Math.random()*6).toFixed(1)+
+    's;--shimmer-d:'+(-Math.random()*12).toFixed(1)+'s;--c:'+a.color+'"':
+    '" style="--c:'+a.color+'"';
+  const sys=a.system?'<div class="tile system'+fx+'>'+a.icon+'</div>':
+    '<div class="tile'+fx+'>'+a.icon+'</div>';
   d.innerHTML=sys+'<div class="name">'+esc(a.name)+'</div>';return d;}
 
 function gotoPage(i){

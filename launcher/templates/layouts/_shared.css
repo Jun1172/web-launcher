@@ -254,4 +254,111 @@ body::after {
     box-shadow: var(--toast-shadow);
     animation:fade 0.15s, pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-@keyframes pop { from { transform:translate(-50%,-50%) scale(0.9); opacity:0; } }
+@keyframes pop { from { transform: translate(-50%,-50%) scale(0.9); opacity:0; } }
+
+/* ══════════════ 氛围动态层（粒子/光晕，JS 注入 #fx-layer） ══════════════ */
+
+/* 星尘粒子：CSS 动画上浮 + JS 随机化 duration/size/delay/位置 */
+#fx-layer { position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+/* 浅色主题：白底白星不可见 → 粒子用"深灰尘 + 彩晕"模式（--fx-star-dark=1 标记） */
+#fx-layer { animation-play-state: var(--fx-play, running); }
+.fx-star {
+    position:absolute; bottom:-12px;
+    border-radius:50%;
+    background: var(--star-color, rgba(255,255,255,0.75));
+    box-shadow: 0 0 6px 1px var(--star-glow, rgba(255,255,255,0.35));
+    opacity:0;
+    animation: fx-rise var(--dur, 16s) linear var(--delay, 0s) infinite;
+    animation-play-state: var(--fx-play, running);
+    will-change: transform, opacity;
+}
+@keyframes fx-rise {
+    0%   { transform: translate3d(0, 0, 0) scale(0.6); opacity:0; }
+    8%   { opacity: var(--peak, 0.7); }
+    82%  { opacity: var(--peak, 0.7); }
+    100% { transform: translate3d(var(--drift, 26px), -108vh, 0) scale(1); opacity:0; }
+}
+/* 大颗"萤火"粒子：更慢更亮，带轻微摇摆 */
+.fx-star.big {
+    background: var(--star-color, rgba(190,220,255,0.9));
+    box-shadow: 0 0 10px 2px var(--star-glow, rgba(160,200,255,0.45));
+    animation-name: fx-rise, fx-sway;
+    animation-duration: var(--dur, 26s), var(--sway-t, 5.5s);
+    animation-timing-function: linear, ease-in-out;
+    animation-delay: var(--delay, 0s), 0s;
+    animation-iteration-count: infinite, infinite;
+    animation-play-state: var(--fx-play, running), var(--fx-play, running);
+}
+@keyframes fx-sway {
+    0%, 100% { margin-left: 0; }
+    50% { margin-left: 14px; }
+}
+
+/* 鼠标跟随光晕：大片柔光贴在指针后（rAF 平滑跟随） */
+#fx-glow {
+    position:fixed; left:0; top:0; width:460px; height:460px;
+    margin:-230px 0 0 -230px; border-radius:50%;
+    background: radial-gradient(circle,
+        var(--pointer-glow, rgba(129,140,248,0.10)) 0%,
+        color-mix(in srgb, var(--pointer-glow, rgba(129,140,248,0.10)) 45%, transparent) 38%,
+        transparent 68%);
+    opacity:0; transition:opacity 0.6s ease;
+    pointer-events:none; z-index:1;
+    will-change: transform;
+}
+body.fx-ready #fx-glow { opacity:1; }
+
+/* 流星：右上往左下划过，亮头在前，每 7~16s 随机一颗 */
+.fx-meteor {
+    position:absolute; top:-6%; width:150px; height:2px; border-radius:2px;
+    background: linear-gradient(270deg, transparent 8%, var(--star-color, rgba(255,255,255,0.8)));
+    filter: drop-shadow(0 0 5px var(--star-glow, rgba(255,255,255,0.4)));
+    opacity:0;
+    animation: fx-meteor var(--dur, 1.2s) cubic-bezier(0.1, 0.6, 0.3, 1) forwards;
+    will-change: transform, opacity;
+}
+/* 浅色主题流星：灰蓝尘尾 */
+.fx-meteor { animation-play-state: var(--fx-play, running); }
+@keyframes fx-meteor {
+    0%   { transform: translate3d(0,0,0) rotate(-38deg) scaleX(0.4); opacity:0; }
+    12%  { opacity:1; }
+    100% { transform: translate3d(-38vw, 40vh, 0) rotate(-38deg) scaleX(1); opacity:0; }
+}
+
+/* 点击涟漪：磁贴/图标按下时从点击点扩散一圈光环 */
+.fx-ripple {
+    position:absolute; width:14px; height:14px; margin:-7px; border-radius:50%;
+    border:2px solid var(--ripple-color, rgba(255,255,255,0.85));
+    pointer-events:none; z-index:6;
+    animation: fx-ripple 0.55s cubic-bezier(0, 0.2, 0.8, 1) forwards;
+}
+@keyframes fx-ripple {
+    from { opacity:0.9; transform:scale(1); }
+    to   { opacity:0;   transform:scale(13); }
+}
+
+/* 时钟分钟翻转：分钟跳变时数字翻入 */
+.fx-flip { animation: fx-flip 0.5s cubic-bezier(0.22, 1.2, 0.36, 1); }
+@keyframes fx-flip {
+    from { transform: perspective(500px) rotateX(55deg) translateY(-6px); opacity:0.1; }
+    to   { transform: none; opacity:1; }
+}
+
+/* 时钟呼吸：极淡的光晕脉动（配合主题 --clock-glow） */
+.fx-clock-breathe { animation: fx-breathe 5.5s ease-in-out infinite; }
+@keyframes fx-breathe {
+    0%, 100% { filter: drop-shadow(0 3px 14px rgba(0,0,0,0.22)) drop-shadow(0 0 22px var(--clock-glow, rgba(129,140,248,0.3))); }
+    50%      { filter: drop-shadow(0 3px 14px rgba(0,0,0,0.22)) drop-shadow(0 0 44px var(--clock-glow, rgba(129,140,248,0.55))); }
+}
+
+/* 尊重系统"减少动态效果"设置（无障碍） */
+@media (prefers-reduced-motion: reduce) {
+    .fx-star, .fx-star.big, .fx-meteor { animation: none; display:none; }
+    #fx-glow { display:none; }
+    .fx-clock-breathe, .fx-flip { animation: none; }
+    body::after { animation: none; }
+}
+
+/* 磁贴 shimmer 同样受窗口隐藏暂停控制 */
+.icon.shimmer, .tile.fx-glow-cycle { animation-play-state: var(--fx-play, running); }
+.icon.shimmer:hover, .tile.fx-glow-cycle:hover { animation-play-state: paused; }

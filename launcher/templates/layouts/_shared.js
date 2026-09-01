@@ -404,3 +404,117 @@ function setupWinChrome(){
 setupWinChrome();
 setTimeout(setupWinChrome,300);
 setTimeout(setupWinChrome,1500);
+
+/* ══════════════ 氛围动态层 ══════════════
+   1) 星尘粒子：30 颗小星 + 8 颗大萤火，CSS 动画上浮（GPU 合成）
+   2) 鼠标跟随光晕：rAF 平滑插值跟随指针
+   3) 时钟呼吸 + 分钟翻转：光晕脉动 + 数字翻入
+   4) 流星：7~16s 随机一颗划过
+   5) 点击涟漪：磁贴/图标按下扩散光环
+   6) 资源守护：窗口最小化/隐藏时 CSS 动画暂停 + rAF 停表
+   全部 respect prefers-reduced-motion（CSS 侧已关动画，这里直接不建 DOM） */
+(function setupAmbientFX(){
+  var reduce = false;
+  try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
+  if (reduce) return;
+
+  /* ── 粒子层 ── */
+  var layer = document.createElement('div');
+  layer.id = 'fx-layer';
+  var frag = document.createDocumentFragment();
+  for (var i = 0; i < 38; i++) {
+    var s = document.createElement('i');
+    var big = i % 5 === 0; /* 每 5 颗出 1 颗大萤火 */
+    var size = big ? 3 + Math.random() * 3 : 1.2 + Math.random() * 1.8;
+    s.className = 'fx-star' + (big ? ' big' : '');
+    s.style.left = (Math.random() * 100).toFixed(2) + '%';
+    s.style.width = size.toFixed(1) + 'px';
+    s.style.height = size.toFixed(1) + 'px';
+    s.style.setProperty('--dur', (big ? 22 + Math.random() * 14 : 13 + Math.random() * 10).toFixed(1) + 's');
+    s.style.setProperty('--delay', (-Math.random() * 26).toFixed(1) + 's'); /* 负延迟：一开场就满天星 */
+    s.style.setProperty('--peak', (big ? 0.55 + Math.random() * 0.3 : 0.35 + Math.random() * 0.4).toFixed(2));
+    s.style.setProperty('--drift', ((Math.random() - 0.5) * 70).toFixed(0) + 'px');
+    if (big) s.style.setProperty('--sway-t', (4.5 + Math.random() * 4).toFixed(1) + 's');
+    frag.appendChild(s);
+  }
+  layer.appendChild(frag);
+  document.body.appendChild(layer);
+
+  /* ── 资源守护：窗口不可见 → 暂停全部 CSS 动画 + 停 rAF ── */
+  function setFrozen(frozen){
+    document.documentElement.style.setProperty('--fx-play', frozen ? 'paused' : 'running');
+    layer.style.animationPlayState = frozen ? 'paused' : 'running';
+  }
+  document.addEventListener('visibilitychange', function(){
+    setFrozen(document.hidden);
+  });
+
+  /* ── 鼠标跟随光晕（窗口隐藏时 rAF 自动降到 ~0 次/秒，无需额外处理） ── */
+  var glow = document.createElement('div');
+  glow.id = 'fx-glow';
+  document.body.appendChild(glow);
+  var tx = innerWidth / 2, ty = innerHeight / 2, gx = tx, gy = ty, seen = false;
+  addEventListener('pointermove', function (e) {
+    tx = e.clientX; ty = e.clientY;
+    if (!seen) { seen = true; document.body.classList.add('fx-ready'); gx = tx; gy = ty; }
+  }, { passive: true });
+  addEventListener('pointerleave', function () { document.body.classList.remove('fx-ready'); seen = false; });
+  (function follow() {
+    if (!document.hidden) {
+      gx += (tx - gx) * 0.07; /* 慢半拍跟随，产生"拖尾"手感 */
+      gy += (ty - gy) * 0.07;
+      glow.style.transform = 'translate3d(' + gx.toFixed(1) + 'px,' + gy.toFixed(1) + 'px,0)';
+    }
+    requestAnimationFrame(follow);
+  })();
+
+  /* ── 时钟呼吸 ── */
+  var clockEl = document.getElementById('cwTime');
+  if (clockEl) clockEl.classList.add('fx-clock-breathe');
+
+  /* ── 分钟翻转：整分时数字翻入（改 tick 之外的独立钩子） ── */
+  if (clockEl) {
+    var lastMin = new Date().getMinutes();
+    var origText = '';
+    var flipObs = setInterval(function(){
+      if (document.hidden) return;
+      var m = new Date().getMinutes();
+      if (m !== lastMin) {
+        lastMin = m;
+        clockEl.classList.remove('fx-flip');
+        void clockEl.offsetWidth; /* 强制 reflow 重启动画 */
+        clockEl.classList.add('fx-flip');
+      }
+    }, 1000);
+  }
+
+  /* ── 流星：随机间隔生成，划过即自删 ── */
+  function spawnMeteor(){
+    if (document.hidden) { scheduleMeteor(); return; }
+    var m = document.createElement('i');
+    m.className = 'fx-meteor';
+    m.style.left = (55 + Math.random() * 45) + '%';   /* 右上半区出发 */
+    m.style.setProperty('--dur', (0.9 + Math.random() * 0.7).toFixed(2) + 's');
+    layer.appendChild(m);
+    setTimeout(function(){ m.remove(); }, 2200);
+    scheduleMeteor();
+  }
+  function scheduleMeteor(){
+    setTimeout(spawnMeteor, 7000 + Math.random() * 9000);
+  }
+  scheduleMeteor();
+
+  /* ── 点击涟漪：任何 .icon/.tile 按下时从指针位置扩散 ── */
+  document.addEventListener('pointerdown', function(e){
+    var host = e.target.closest ? e.target.closest('.icon, .tile, .card, .themeBtn, .layoutBtn') : null;
+    if (!host) return;
+    var r = host.getBoundingClientRect();
+    if (r.width > 300) return; /* 超大容器不扩散，避免怪异 */
+    var rp = document.createElement('i');
+    rp.className = 'fx-ripple';
+    rp.style.left = (e.clientX - r.left) + 'px';
+    rp.style.top = (e.clientY - r.top) + 'px';
+    host.appendChild(rp);
+    setTimeout(function(){ rp.remove(); }, 600);
+  });
+})();

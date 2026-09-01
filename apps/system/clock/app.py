@@ -1,3 +1,4 @@
+import os
 import json, os, sys
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -362,4 +363,4 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"️ 秒表与日历 → http://127.0.0.1:{PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()

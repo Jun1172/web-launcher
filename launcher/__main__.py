@@ -108,8 +108,14 @@ def _start_http_server(server):
 def main():
     _redirect_stdout_if_needed()
 
-    # 1. 尝试导入 pywebview；未安装或 LAUNCHER_HTTP_ONLY 设置则回退到纯 HTTP 模式
+    # 1.5 子应用绑定地址跟随 launcher：Popen 默认继承当前进程环境，
+    #     应用端读 os.environ.get("APP_HOST", "127.0.0.1") 决定监听地址。
+    #     桌面默认 127.0.0.1 保持不变；嵌入式把 config.json 的
+    #     launcher.host 改成 0.0.0.0 后，应用也随之对局域网开放。
     import os
+    os.environ["APP_HOST"] = LAUNCHER_HOST
+
+    # 1. 尝试导入 pywebview；未安装或 LAUNCHER_HTTP_ONLY 设置则回退到纯 HTTP 模式
     if os.environ.get("LAUNCHER_HTTP_ONLY"):
         has_webview = False
         safe_print("[INFO] LAUNCHER_HTTP_ONLY 已设置，使用纯 HTTP 模式")

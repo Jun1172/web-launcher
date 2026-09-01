@@ -690,4 +690,4 @@ loadFiles();
 
 if __name__ == "__main__":
     print(f"[log-viewer] 启动于 http://127.0.0.1:{PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), Handler).serve_forever()

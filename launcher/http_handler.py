@@ -183,10 +183,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "url": f"/stub?id={app['id']}", "reason": None})
             elif result["ok"]:
                 port = result.get("port")
-                # 有端口则返回 iframe URL，无端口应用返回 url=None
-                self._json({"ok": True,
-                            "url": f"http://127.0.0.1:{port}" if port else None,
-                            "reason": None})
+                # 有端口则返回 iframe URL，无端口应用返回 url=None。
+                # URL 的主机取自浏览器请求头 Host：用 IP 访问就返回 IP，
+                # 用 127.0.0.1 访问就返回 127.0.0.1（桌面/嵌入式远程访问都能打开）。
+                url = None
+                if port:
+                    req_host = (self.headers.get("Host") or "127.0.0.1").rsplit(":", 1)[0]
+                    url = f"http://{req_host}:{port}"
+                self._json({"ok": True, "url": url, "reason": None})
             else:
                 # 启动失败（进程崩溃/端口被占/正在启动中）
                 self._json({"ok": False, "url": None,

@@ -301,6 +301,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 - **Windows CE / RT**：不支持（依赖 `subprocess.CREATE_NO_WINDOW`）
 - **Linux musl**：`signal.SIGTERM` 等 POSIX 信号可用，`signal.CTRL_BREAK_EVENT` 不可用
 - **C/C++ 应用部署**：参照 [cpp-hello 模板](apps/user/cpp-hello/)，建议静态链接（`-static`）避免运行时缺 DLL；x86 / ARM 分别出 zip
+- **局域网/远程访问**：把 `config.json` 的 `launcher.host` 改为 `0.0.0.0`。iframe 应用地址按浏览器请求的 `Host` 头自动生成（用哪个 IP 访问就返回哪个 IP）；子应用监听地址通过继承的环境变量 `APP_HOST` 跟随 launcher 绑定，无需逐个修改应用。无 GPU 的嵌入式板卡（如 RV1103）装不了 pywebview 时会自动回退纯 HTTP 模式，界面由任意设备浏览器访问板子 IP 打开
 
 ### 3. 应用预装
 - 把 `apps/system/` 全部预装到主板（出厂默认）

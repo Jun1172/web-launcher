@@ -597,4 +597,4 @@ if __name__ == "__main__":
     ensure_docs()
     print(f"📖 md-viewer → http://127.0.0.1:{PORT}")
     print(f"   文档目录: {DOCS_DIR}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), Handler).serve_forever()

@@ -7,6 +7,11 @@
     "released": "2026-08-20T10:00:00",
     "changelog": "- 应用分类新增 general 组（通用工具）与 etws 组（业务专用）\n- 全面整理 app.json：统一字段顺序、强制添加 group 标记（system/user/general/etws）\n- 端口重新分配，按分组分段：system 8100-8109、etws 8110-8119、user 8120-8139、general 8140-8159\n- 修复 general 组应用 cmd 路径错误（apps/user/xxx → apps/general/xxx）导致无法启动\n- 修复 general 组应用目录名与 id 不一致（mqtt_debugger→mqtt-debug 等横杠命名统一）\n- 修复端口冲突：8140（calculator 与 cpp-hello）、8143（mqtt-debug 与 lan-talk）\n- 应用分类重构：system/user 两级目录\n- 系统应用：默认安装、可更新、不可卸载\n- 用户应用：通过应用商店安装/卸载\n- 五种就绪判定：http / tcp / process / file / none\n- 崩溃重启策略：always / failure / never\n- launcher 自更新机制\n- C/C++ 跨平台应用部署（cpp-hello 模板）\n- 子进程树清理，避免 C++ 进程成孤儿\n- 关于面板显示版本/Changelog/系统更新\n- 上拉最近任务面板 + 单卡上滑清除 + 全部清除\n- 应用商店详情弹窗：Changelog/历史版本/版本回退\n- 代码模块化：launcher.py 拆为 8 个功能模块"
   },
+  "ui": {
+    "show_window_buttons": true,
+    "fx_enabled": true,
+    "fx_particle_count": 38
+  },
   "repo": {
     "url": "https://1.15.30.237",
     "auth": null,

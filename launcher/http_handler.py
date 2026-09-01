@@ -139,6 +139,18 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        # ── UI 配置（窗口按钮 / 动效开关，源自 config.json 的 ui 节）──
+        if path == "/api/ui/config":
+            # 每次从磁盘读取，使 config.json 修改即时生效（无需重启 launcher）
+            cfg = config.load_config()
+            ui = cfg.get("ui", {})
+            self._json({
+                "show_window_buttons": ui.get("show_window_buttons", True),
+                "fx_enabled": ui.get("fx_enabled", True),
+                "fx_particle_count": ui.get("fx_particle_count", 38),
+            })
+            return
+
         # ── 安装/升级到最新 ──
         if path == "/api/install":
             aid = q.get("id", [None])[0]

@@ -330,7 +330,18 @@ poll().then(()=>{
 
 /* ── pywebview 窗口控制（自注入，reload 后不丢） ──
    仅在 pywebview 环境创建：状态栏拖拽 + 8 边缘缩放热区 + 右上角 —▢✕ 按钮。
-   非桌面窗口模式（纯 HTTP）下 window.pywebview 不存在 → 静默跳过。 */
+   非桌面窗口模式（纯 HTTP）下 window.pywebview 不存在 → 静默跳过。
+   /api/ui/config 的 show_window_buttons=false 时跳过 —▢✕ 按钮组（嵌入式/kiosk 场景）。 */
+var __uiCfg = {show_window_buttons: true, fx_enabled: true, fx_particle_count: 38, __loaded: false};
+fetch('/api/ui/config').then(r=>r.json()).then(function(c){
+  Object.assign(__uiCfg, c);
+  __uiCfg.__loaded = true;
+  /* 如果窗口壳已经初始化过但当时没拿到配置，这里补一次按钮注入 */
+  if(c.show_window_buttons === false){
+    document.documentElement.classList.add('no-win-buttons');
+  }
+}).catch(function(){ __uiCfg.__loaded = true; });
+
 function setupWinChrome(){
   try{
     if(!window.pywebview||!window.pywebview.api)return;
@@ -375,7 +386,10 @@ function setupWinChrome(){
   mkZone('nesw-resize','bl','left:0;bottom:0;width:12px;height:12px;');
   mkZone('nwse-resize','br','right:0;bottom:0;width:12px;height:12px;');
 
-  /* 右上角窗口控制按钮组 */
+  /* 右上角窗口控制按钮组 —— 嵌入式/kiosk 场景通过 config.json
+     ui.show_window_buttons=false 关闭，前端读 __uiCfg 决定是否注入 */
+  if(__uiCfg.show_window_buttons===false)return;
+
   var grp=document.createElement('span');
   grp.style.cssText='display:flex;align-items:center;gap:2px;margin-left:12px;background:rgba(255,255,255,0.05);border-radius:8px;padding:2px;';
   function mkBtn(svg,title,fn,hoverIn,hoverOut){
@@ -412,17 +426,24 @@ setTimeout(setupWinChrome,1500);
    4) 流星：7~16s 随机一颗划过
    5) 点击涟漪：磁贴/图标按下扩散光环
    6) 资源守护：窗口最小化/隐藏时 CSS 动画暂停 + rAF 停表
-   全部 respect prefers-reduced-motion（CSS 侧已关动画，这里直接不建 DOM） */
-(function setupAmbientFX(){
+   全部 respect prefers-reduced-motion（CSS 侧已关动画，这里直接不建 DOM）
+   config.json 的 ui.fx_enabled=false 时整体跳过（嵌入式低端设备节能模式） */
+function setupAmbientFX(){
   var reduce = false;
   try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
   if (reduce) return;
+  if (__uiCfg.fx_enabled === false) return;  /* config.json 关闭动效 */
 
   /* ── 粒子层 ── */
   var layer = document.createElement('div');
   layer.id = 'fx-layer';
   var frag = document.createDocumentFragment();
-  for (var i = 0; i < 38; i++) {
+  /* 注意：不能用 `|| 38` 兜底 —— 0 是合法值（关闭粒子），会被当成 falsy 变回 38 */
+  var _pc = __uiCfg.fx_particle_count;
+  var count = (typeof _pc === 'number' && isFinite(_pc) && _pc >= 0)
+    ? Math.min(Math.floor(_pc), 300)   /* 上限 300，防止手滑写个大值拖垮页面 */
+    : 38;
+  for (var i = 0; i < count; i++) {
     var s = document.createElement('i');
     var big = i % 5 === 0; /* 每 5 颗出 1 颗大萤火 */
     var size = big ? 3 + Math.random() * 3 : 1.2 + Math.random() * 1.8;
@@ -517,4 +538,11 @@ setTimeout(setupWinChrome,1500);
     host.appendChild(rp);
     setTimeout(function(){ rp.remove(); }, 600);
   });
+}
+
+/* setupAmbientFX 依赖 __uiCfg（/api/ui/config 异步加载），等它就绪后跑一次。
+   顶部的 fetch 已设置 __uiCfg，这里轮询等到 __loaded=true 即触发。 */
+(function waitUiThenFx(){
+  if (__uiCfg.__loaded) { setupAmbientFX(); return; }
+  setTimeout(waitUiThenFx, 80);
 })();

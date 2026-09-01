@@ -101,12 +101,69 @@ def safe_print(msg):
     _logger.log(level, msg)
 
 
+def _strip_json_comments(text):
+    """剥离 JSON 中的 // 行注释和 /* 块注释 */。
+
+    JSON 标准不支持注释，但用户常习惯性加 // 备注（尤其是 config.json）。
+    本函数在解析前预处理，避免注释导致整个配置回退到默认值。
+
+    注意：不处理字符串内部的 //（如 changelog 中的 URL），仅处理
+    出现在引号外部的注释标记。实现用简单状态机扫描。
+    """
+    import re
+    out = []
+    i, n = 0, len(text)
+    in_str = False  # 是否在 "..." 字符串内
+    str_char = None
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == '\\' and i + 1 < n:  # 转义字符（如 \"），原样保留下一字符
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == str_char:
+                in_str = False
+            i += 1
+            continue
+        # 不在字符串内
+        if ch in ('"', "'"):
+            in_str = True
+            str_char = ch
+            out.append(ch)
+            i += 1
+            continue
+        if ch == '/' and i + 1 < n:
+            nxt = text[i + 1]
+            if nxt == '/':  # 行注释 → 跳到行尾
+                j = text.find('\n', i)
+                if j == -1:
+                    break
+                i = j
+                continue
+            if nxt == '*':  # 块注释 → 跳到 */
+                j = text.find('*/', i + 2)
+                if j == -1:
+                    break
+                i = j + 2
+                continue
+        out.append(ch)
+        i += 1
+    return ''.join(out)
+
+
 def load_config():
-    """从 CONFIG_JSON 读取配置；不存在时创建默认配置。"""
+    """从 CONFIG_JSON 读取配置；不存在时创建默认配置。
+
+    容错：自动剥离 // 行注释和 /* 块注释 */，避免用户加备注导致解析失败。
+    """
     if CONFIG_JSON.exists():
         try:
-            return json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            raw = CONFIG_JSON.read_text(encoding="utf-8")
+            return json.loads(_strip_json_comments(raw))
+        except (json.JSONDecodeError, OSError) as e:
+            safe_print(f"[WARN] config.json 解析失败，回退到默认配置: {e}")
             return {}
     config = json.loads(json.dumps(DEFAULT_CONFIG))
     try:

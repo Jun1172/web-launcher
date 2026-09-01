@@ -35,6 +35,7 @@ _LAYOUTS_DIR = _TEMPLATES_DIR / "layouts"
 # swatch 是前端主题按钮的预览色块（CSS background 值）。
 THEMES = {
     "tech-dark": {"name": "深色科技", "swatch": "linear-gradient(135deg,#0b1120,#818cf8)"},
+    "aurora-pro": {"name": "极光紫青", "swatch": "linear-gradient(135deg,#041018,#22d3ee,#a855f7)"},
     "light-simple": {"name": "浅色简约", "swatch": "linear-gradient(135deg,#f1f5f9,#6366f1)"},
     "macos-dock": {"name": "macOS Dock", "swatch": "linear-gradient(135deg,#1d1d1f,#007aff)"},
 }

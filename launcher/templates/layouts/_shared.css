@@ -7,20 +7,41 @@ body {
     -webkit-font-smoothing: antialiased;
     color: var(--text-primary);
     user-select: none;
+    /* isolation 让负 z-index 的背景伪元素绘制在 body 背景之上、内容之下 */
+    isolation: isolate;
     background-color: var(--bg-base);
     background-image:
-        radial-gradient(at 0% 0%, var(--bg-aurora-1) 0px, transparent 50%),
-        radial-gradient(at 100% 0%, var(--bg-aurora-2) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, var(--bg-aurora-3) 0px, transparent 50%),
-        radial-gradient(at 0% 100%, var(--bg-aurora-4) 0px, transparent 50%);
-    background-size: 200% 200%;
-    animation: aurora 25s ease infinite;
+        radial-gradient(ellipse 90% 65% at 8% -6%, var(--bg-aurora-1) 0%, transparent 62%),
+        radial-gradient(ellipse 75% 58% at 96% 6%, var(--bg-aurora-2) 0%, transparent 58%),
+        radial-gradient(ellipse 90% 70% at 104% 102%, var(--bg-aurora-3) 0%, transparent 62%),
+        radial-gradient(ellipse 78% 62% at -6% 98%, var(--bg-aurora-4) 0%, transparent 58%),
+        radial-gradient(ellipse 150% 105% at 50% 45%, transparent 42%, var(--bg-vignette, rgba(2,6,16,0.35)) 100%);
+    background-attachment: fixed;
     transition: background-color 0.4s ease, color 0.4s ease;
 }
-@keyframes aurora {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+/* 细腻噪点纹理：消除渐变色带，增加壁纸质感（GPU 合成，开销极低） */
+body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    opacity: var(--noise-opacity, 0.05);
+    mix-blend-mode: overlay;
+}
+/* 缓慢漂移的第二层极光：让背景"活"起来（transform 动画，不触发重绘） */
+body::after {
+    content: ''; position: fixed; inset: -25%; z-index: -1; pointer-events: none;
+    background:
+        radial-gradient(ellipse 55% 42% at 32% 34%, var(--aurora-drift-1, rgba(99,102,241,0.10)) 0%, transparent 65%),
+        radial-gradient(ellipse 48% 38% at 68% 62%, var(--aurora-drift-2, rgba(34,211,238,0.07)) 0%, transparent 65%);
+    animation: bgDrift 46s ease-in-out infinite alternate;
+    will-change: transform;
+}
+@keyframes bgDrift {
+    from { transform: translate3d(-2%, -1.5%, 0); }
+    to   { transform: translate3d(2.5%, 2%, 0); }
+}
+/* 磁贴/图标入场动画（各布局通过 animation 引用） */
+@keyframes tile-pop {
+    from { opacity: 0; transform: scale(0.86) translateY(14px); }
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -30,13 +51,14 @@ body {
 
 /* ── 顶部状态栏 ── */
 #statusbar {
-    position:fixed; top:0; left:0; right:0; height:32px; z-index:90;
-    display:flex; justify-content:space-between; align-items:center; padding:0 24px;
+    position:fixed; top:0; left:0; right:0; height:34px; z-index:90;
+    display:flex; justify-content:space-between; align-items:center; padding:0 20px 0 24px;
     font-size:12.5px; font-weight:500; pointer-events:auto;
-    padding-right:12px;
+    font-variant-numeric: tabular-nums;
     background: var(--statusbar-bg);
-    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
     border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 1px 18px rgba(0,0,0,0.18);
 }
 .sbR { display:flex; align-items:center; gap:12px; }
 
@@ -61,7 +83,7 @@ body {
     padding:60px 0 0; transition:transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s, filter 0.35s;
     touch-action:none;
 }
-#home.dim { opacity:0; transform:scale(1.05); pointer-events:none; filter:blur(10px); }
+#home.dim { opacity:0; transform:scale(1.05); pointer-events:none; filter:blur(12px); }
 
 /* ── 最近任务面板 ── */
 .panel {

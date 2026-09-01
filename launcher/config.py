@@ -153,24 +153,51 @@ def _strip_json_comments(text):
     return ''.join(out)
 
 
+def _bootstrap_config_from_bundle():
+    """打包态首次运行：把随包携带的 config.json 释放到 exe 同目录。
+
+    场景：用户把 launcher.exe 单独拷到别的目录运行，该目录没有 config.json。
+    若不做这一步，程序会生成一份"出厂默认"配置，导致开发机上精心调整的
+    ui / repo / gitee / publish 等配置全部丢失（表现为"exe 不读我的配置"）。
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    # 关键：同目录已有配置时必须直接返回。load_config() 会被 /api/ui/config
+    # 等接口高频调用，若不判断存在性，每次请求都会用包内配置覆盖用户的修改。
+    if CONFIG_JSON.exists():
+        return
+    src = RESOURCE_BASE / "config.json"
+    if not src.exists():
+        return
+    try:
+        CONFIG_JSON.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        safe_print(f"[INFO] 已从程序包释放默认配置: {CONFIG_JSON}")
+    except OSError as e:
+        safe_print(f"[WARN] 释放配置失败: {e}")
+
+
 def load_config():
     """从 CONFIG_JSON 读取配置；不存在时创建默认配置。
 
     容错：自动剥离 // 行注释和 /* 块注释 */，避免用户加备注导致解析失败。
+    解析失败时回退到 DEFAULT_CONFIG（而不是空字典），避免整份配置被清空。
     """
+    _bootstrap_config_from_bundle()
     if CONFIG_JSON.exists():
         try:
             raw = CONFIG_JSON.read_text(encoding="utf-8")
             return json.loads(_strip_json_comments(raw))
         except (json.JSONDecodeError, OSError) as e:
             safe_print(f"[WARN] config.json 解析失败，回退到默认配置: {e}")
-            return {}
+            safe_print(f"[WARN] 出问题的文件: {CONFIG_JSON}")
+            return json.loads(json.dumps(DEFAULT_CONFIG))
     config = json.loads(json.dumps(DEFAULT_CONFIG))
     try:
         CONFIG_JSON.parent.mkdir(parents=True, exist_ok=True)
         CONFIG_JSON.write_text(
             json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        safe_print(f"[WARN] 未找到 config.json，已在以下位置生成默认配置: {CONFIG_JSON}")
     except OSError:
         # 只读目录下仍允许 Launcher 使用内存中的默认配置。
         pass
@@ -206,6 +233,10 @@ def reload_config():
     global REPO_URL, REPO_AUTH, VERIFY_SSL, SSL_CTX
 
     CONFIG = load_config()
+    # 打印实际生效的配置文件路径：排查"改了配置没生效"时第一眼看这里
+    safe_print(f"[INFO] 使用配置文件: {CONFIG_JSON}"
+               + ("" if CONFIG_JSON.exists() else "（文件不存在，使用内置默认配置）"))
+    safe_print(f"[INFO] 配置版本: {CONFIG.get('launcher', {}).get('version', '0.0.1')}")
     LAUNCHER_CFG = CONFIG.get("launcher", {})
     REPO_CFG = CONFIG.get("repo", {})
     GITEE_CFG = CONFIG.get("gitee", DEFAULT_CONFIG["gitee"])

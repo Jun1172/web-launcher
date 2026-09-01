@@ -148,6 +148,10 @@ class Handler(BaseHTTPRequestHandler):
                 "show_window_buttons": ui.get("show_window_buttons", True),
                 "fx_enabled": ui.get("fx_enabled", True),
                 "fx_particle_count": ui.get("fx_particle_count", 38),
+                # 分项开关：可只关掉某一类动效，其余保留
+                "fx_pointer_glow": ui.get("fx_pointer_glow", True),
+                "fx_meteor": ui.get("fx_meteor", True),
+                "fx_ripple": ui.get("fx_ripple", True),
             })
             return
 

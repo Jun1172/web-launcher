@@ -332,7 +332,8 @@ poll().then(()=>{
    仅在 pywebview 环境创建：状态栏拖拽 + 8 边缘缩放热区 + 右上角 —▢✕ 按钮。
    非桌面窗口模式（纯 HTTP）下 window.pywebview 不存在 → 静默跳过。
    /api/ui/config 的 show_window_buttons=false 时跳过 —▢✕ 按钮组（嵌入式/kiosk 场景）。 */
-var __uiCfg = {show_window_buttons: true, fx_enabled: true, fx_particle_count: 38, __loaded: false};
+var __uiCfg = {show_window_buttons: true, fx_enabled: true, fx_particle_count: 38,
+               fx_pointer_glow: true, fx_meteor: true, fx_ripple: true, __loaded: false};
 fetch('/api/ui/config').then(r=>r.json()).then(function(c){
   Object.assign(__uiCfg, c);
   __uiCfg.__loaded = true;
@@ -470,7 +471,9 @@ function setupAmbientFX(){
     setFrozen(document.hidden);
   });
 
-  /* ── 鼠标跟随光晕（窗口隐藏时 rAF 自动降到 ~0 次/秒，无需额外处理） ── */
+  /* ── 鼠标跟随光晕（窗口隐藏时 rAF 自动降到 ~0 次/秒，无需额外处理） ──
+     ui.fx_pointer_glow=false 时整块跳过：不建 DOM、不挂监听、不跑 rAF（省电） */
+  if (__uiCfg.fx_pointer_glow !== false) {
   var glow = document.createElement('div');
   glow.id = 'fx-glow';
   document.body.appendChild(glow);
@@ -488,6 +491,7 @@ function setupAmbientFX(){
     }
     requestAnimationFrame(follow);
   })();
+  }
 
   /* ── 时钟呼吸 ── */
   var clockEl = document.getElementById('cwTime');
@@ -523,10 +527,11 @@ function setupAmbientFX(){
   function scheduleMeteor(){
     setTimeout(spawnMeteor, 7000 + Math.random() * 9000);
   }
-  scheduleMeteor();
+  /* 注意：ui.fx_meteor=false 时不启动定时器链，也就不再有 setTimeout 唤醒 */
+  if (__uiCfg.fx_meteor !== false) scheduleMeteor();
 
   /* ── 点击涟漪：任何 .icon/.tile 按下时从指针位置扩散 ── */
-  document.addEventListener('pointerdown', function(e){
+  if (__uiCfg.fx_ripple !== false) document.addEventListener('pointerdown', function(e){
     var host = e.target.closest ? e.target.closest('.icon, .tile, .card, .themeBtn, .layoutBtn') : null;
     if (!host) return;
     var r = host.getBoundingClientRect();

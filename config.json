@@ -10,7 +10,10 @@
   "ui": {
     "show_window_buttons": true,
     "fx_enabled": true,
-    "fx_particle_count": 38
+    "fx_particle_count": 38,
+    "fx_pointer_glow": false,
+    "fx_meteor": true,
+    "fx_ripple": true
   },
   "repo": {
     "url": "https://1.15.30.237",

@@ -183,6 +183,25 @@ PORT = get_port()
 
 （`json` / `os` / `pathlib.Path` 需在文件顶部导入。）
 
+### 监听地址约定（APP_HOST）
+
+应用**不要硬编码** `127.0.0.1` / `0.0.0.0`。launcher 启动时会把自己的监听地址写入 `APP_HOST` 环境变量，子进程（应用）继承后据此绑定，从而自动跟随 launcher：桌面模式默认只监听回环；把 `config.json` 的 `launcher.host` 改成 `0.0.0.0` 后，所有应用随之一并对局域网开放，无需逐个修改。
+
+```python
+# 推荐写法：读 APP_HOST，缺省回退 127.0.0.1
+ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()
+```
+
+需要复用地址时（如打印启动日志）先取到变量再传入：
+
+```python
+HOST = os.environ.get("APP_HOST", "127.0.0.1")
+print(f"[my-app] 启动于 http://{HOST}:{PORT}")
+ThreadingHTTPServer((HOST, PORT), H).serve_forever()
+```
+
+> 应用单独运行（未经过 launcher）时 `APP_HOST` 不存在，回退 `127.0.0.1`，行为与改造前一致。
+
 ## 📦 打包结构
 
 `publish.py` 打包的 zip 顶层结构统一为 `apps/<group>/<id>/...`：

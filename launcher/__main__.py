@@ -97,6 +97,35 @@ class LauncherApi:
             pass
 
 
+def _webview2_available():
+    """粗检 WebView2 Runtime 是否已安装(仅 Windows)。
+
+    GUI 启动前预判: 缺 WebView2 时 pywebview 可能抛异常, 也可能只开一个
+    空白窗口(不抛异常), 后者无法靠 try/except 兜底。检查 EdgeUpdate 注册表
+    的 Evergreen 安装记录(HKLM/HKCU 各两种视图), 消费级场景足够准确;
+    fixed-version 绿色目录分发属于罕见部署, 不在此覆盖。
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        import winreg
+        guid = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        subs = (
+            rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{guid}",
+            rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{guid}",
+        )
+        for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            for sub in subs:
+                try:
+                    winreg.OpenKey(root, sub)
+                    return True
+                except OSError:
+                    continue
+    except Exception:
+        return True  # 检测失败不拦截, 交给 webview.start 的异常兜底
+    return False
+
+
 def _start_http_server(server):
     """后台线程运行 HTTP 服务器。"""
     try:
@@ -129,6 +158,9 @@ def main():
             safe_print("[WARN] 未安装 pywebview，回退到纯 HTTP 模式")
             safe_print("       安装桌面窗口模式: pip install pywebview")
             safe_print(f"       浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+            # 主动弹浏览器, 避免窗口模式下用户看不到任何界面
+            import webbrowser
+            webbrowser.open(f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
 
     # 2. 注册退出钩子（清理所有子进程）
     atexit.register(terminate_all)
@@ -154,6 +186,18 @@ def main():
             safe_print("\n[STOP] 用户中断，正在关闭所有应用进程...")
             terminate_all()
         return
+
+    # 5.5 WebView2 预检: 未安装则桌面窗口必然空白/失败, 直接转浏览器模式
+    if has_webview and not _webview2_available():
+        has_webview = False
+        safe_print("[WARN] 系统未安装 WebView2 Runtime, 桌面窗口不可用")
+        safe_print("       安装后可获得原生窗口体验: https://developer.microsoft.com/microsoft-edge/webview2/")
+        safe_print("[INFO] 已切换浏览器模式, 正在打开系统浏览器...")
+        try:
+            import webbrowser
+            webbrowser.open(f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+        except Exception:
+            pass
 
     # 6. 有 pywebview → 创建桌面窗口
     url = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/"
@@ -184,8 +228,15 @@ def main():
         gui_ok = True
     except Exception as e:
         safe_print(f"[WARN] GUI 窗口启动失败: {e}")
-        safe_print("[WARN] 回退到纯 HTTP 模式，请用浏览器访问:")
-        safe_print(f"       http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+        safe_print("[WARN] 常见原因: 目标机缺少 WebView2 Runtime, 安装后可恢复桌面窗口:")
+        safe_print("       https://developer.microsoft.com/microsoft-edge/webview2/")
+        safe_print("[WARN] 回退到纯 HTTP 模式，正在打开系统浏览器...")
+        # GUI 失败(典型如 Win10 缺 WebView2): 自动弹浏览器, 保证界面可用
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception:
+            pass
 
     if not gui_ok:
         try:

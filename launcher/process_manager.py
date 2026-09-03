@@ -77,20 +77,82 @@ def _resolve_python():
     return list(found) if found else None
 
 
-def _prep_cmd(cmd):
-    """启动命令预处理。
+def runtime_python():
+    """返回随 launcher 分发的内嵌 Python 解释器路径（无则 None）。
 
-    Windows 下 cmd[0] 为 .py/.pyw/.pyc 时，前缀解析出的 Python 解释器；
-    其余（exe/bat/显式解释器）与 POSIX 原样返回。
+    布局: <launcher 根>/runtime/win-x64/python.exe（Windows）
+          <launcher 根>/runtime/linux-x64/bin/python3（Linux，后续支持）
+    打包 exe 时 PyInstaller 通过 runtime/ 目录随身分发。
+    """
+    if getattr(runtime_python, "_cache", None) is not None:
+        return runtime_python._cache or None
+    root = _launcher_root()
+    cand = None
+    if os.name == "nt":
+        p = os.path.join(root, "runtime", "win-x64", "python.exe")
+        if os.path.isfile(p):
+            cand = p
+    else:
+        p = os.path.join(root, "runtime", "linux-x64", "bin", "python3")
+        if os.path.isfile(p):
+            cand = p
+    runtime_python._cache = cand or ""
+    return cand
+
+
+def _launcher_root():
+    """launcher 运行根目录：exe 旁的目录 / 源码的 launcher/ 上级。"""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def app_site_dir(app):
+    """应用专属依赖目录 apps/<group>/<id>/site（存在才有）。"""
+    d = app.get("_dir")  # app_scanner 注入的应用目录
+    if not d:
+        return None
+    site = os.path.join(d, "site")
+    return site if os.path.isdir(site) else None
+
+
+def _app_env(app):
+    """构建子进程环境：LAUNCHER_APP_PORT + 应用 site/ 注入 PYTHONPATH。"""
+    env = os.environ.copy()
+    site = app_site_dir(app)
+    if site:
+        pp = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (site + os.pathsep + pp) if pp else site
+    return env
+
+
+def _prep_cmd(cmd, app=None):
+    """启动命令预处理——解释器解析的唯一入口。
+
+    cmd[0] 为 .py/.pyw/.pyc 时前缀 Python 解释器（其余原样返回）：
+      1) 随身分发的内嵌 runtime（版本可控，protect pyc 与其同源）
+      2) Windows: _resolve_python()（注册表文件关联/PATH/自身）
+         POSIX:   sys.executable（源码态）→ PATH 的 python3
     """
     cmd = list(cmd)
-    if os.name != "nt" or not cmd:
+    if not cmd:
         return cmd
     first = str(cmd[0])
     if first.lower().endswith((".py", ".pyw", ".pyc")):
-        py = _resolve_python()
-        if py:
-            return py + cmd
+        rt = runtime_python()
+        if rt:
+            return [rt] + cmd
+        if os.name == "nt":
+            py = _resolve_python()
+            if py:
+                return py + cmd
+        else:
+            if not getattr(sys, "frozen", False):
+                return [sys.executable] + cmd
+            import shutil
+            p3 = shutil.which("python3") or shutil.which("python")
+            if p3:
+                return [p3] + cmd
     return cmd
 
 
@@ -154,9 +216,9 @@ def open_app(app):
             port = _alloc_port(app.get("port"))
             actual_ports[aid] = port
 
-            env = os.environ.copy()
+            env = _app_env(app)
             env["LAUNCHER_APP_PORT"] = str(port)
-            p = subprocess.Popen(_prep_cmd(app["cmd"]), env=env, **_popen_kwargs())
+            p = subprocess.Popen(_prep_cmd(app["cmd"], app), env=env, **_popen_kwargs())
             procs[aid] = p
 
             # 轮询端口就绪，同时检查进程是否已崩溃
@@ -175,7 +237,8 @@ def open_app(app):
             return {"ok": False, "running": False, "port": None}  # 超时
         else:
             # 无端口的应用：启动进程，等待 0.5s 确认进程存活
-            p = subprocess.Popen(_prep_cmd(app["cmd"]), **_popen_kwargs())
+            p = subprocess.Popen(_prep_cmd(app["cmd"], app), env=_app_env(app),
+                                 **_popen_kwargs())
             procs[aid] = p
             time.sleep(0.5)
             if p.poll() is None:

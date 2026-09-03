@@ -5,10 +5,9 @@
 - 维护模块级全局变量 system_apps / user_apps / REGISTRY
 - 提供 reload_apps() / is_system_app() / is_user_app() / resolve_cmd() 等接口
 
-依赖 launcher.config 提供 APPS_DIR 与 sys.executable；不依赖进程/仓库模块。
+依赖 launcher.config 提供 APPS_DIR；不依赖进程/仓库模块。
 """
 import json
-import sys
 from pathlib import Path
 
 from .config import APPS_DIR, SYSTEM_APPS_DIR, safe_print
@@ -28,13 +27,12 @@ def derive_group(meta):
 
 
 def resolve_cmd(meta, app_dir):
-    """把 app.json 里的 cmd 字段解析为实际 Popen 参数列表。
+    """把 app.json 里的 cmd 字段解析为绝对路径参数列表（纯路径解析）。
 
     规则：
     - 相对路径 → 相对 BASE 展开
-    - 后缀 .py / .pyw → 自动前缀 Python 解释器
-      开发态用 sys.executable（同一个 python.exe）；
-      打包态 sys.executable 是 launcher.exe（不能当解释器），改用系统 python
+    - 不做解释器前缀——解释器统一由 process_manager._prep_cmd 处理
+      （随身 runtime 优先 → 系统 Python 回退），避免两处逻辑分叉
     - 没有 cmd 字段 → 返回 None（代表是纯占位 stub 应用，无独立进程）
     """
     cmd = meta.get("cmd")
@@ -45,11 +43,6 @@ def resolve_cmd(meta, app_dir):
         p = Path(c)
         # app_dir = <root>/apps/<group>/<id>，cmd 是 <root> 相对路径。
         out.append(str(app_dir.parents[2] / p) if not p.is_absolute() else str(p))
-    if out[0].lower().endswith((".py", ".pyw")):
-        # 打包后 sys.executable 是 launcher.exe，用它跑 app.py 会弹新窗口（又跑一次 main）
-        # 改用系统 python 命令；用户系统需装 Python 才能跑 .py app
-        interpreter = "python" if getattr(sys, "frozen", False) else sys.executable
-        out = [interpreter] + out
     return out
 
 
@@ -91,6 +84,7 @@ def _scan_all_apps():
         meta["group"] = g
         meta["system"] = (g == "system")
         meta["cmd"] = resolve_cmd(meta, d)
+        meta["_dir"] = str(d)  # 应用目录绝对路径（process_manager 定位 site/ 用）
         meta.setdefault("version", "0.0.1")
         meta.setdefault("changelog", "")
         meta.setdefault("released", "")

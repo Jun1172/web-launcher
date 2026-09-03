@@ -68,6 +68,55 @@ def _ensure_remote_dirs():
     except Exception as e:
         print(f"  ⚠ ssh mkdir 失败（可能目录已存在）: {e}")
 
+
+def upload_app_wheels(meta):
+    """应用声明 deps 时, 下载对应 wheels 并上传到 repo /wheels/<平台>/。
+
+    存放约定: /var/www/repo/wheels/win-x64/*.whl
+    launcher 端 deps_installer 用 --find-links 离线装 / 建内网 simple 源均可。
+    依赖只需在服务器存一份, 所有 APP 共享。
+    """
+    deps = meta.get("deps")
+    if not deps:
+        return True
+    plat = "win-x64" if sys.platform == "win32" else "linux-x64"
+    stage = BASE / f".wheels-{plat}"
+    if stage.exists():
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True)
+    need = [str(d) for d in deps]
+    print(f"   📥 下载依赖 wheels: {', '.join(need)}")
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "pip", "download", "--only-binary", ":all:",
+             "--dest", str(stage)] + need,
+            capture_output=True, text=True, timeout=600, encoding="utf-8", errors="replace",
+        )
+        if r.returncode != 0:
+            print(f"   ❌ wheels 下载失败: {(r.stderr or r.stdout or '')[-300:]}")
+            return False
+    except subprocess.TimeoutExpired:
+        print("   ❌ wheels 下载超时")
+        return False
+    whls = sorted(stage.glob("*.whl"))
+    if not whls:
+        print("   ⚠ 未下载到任何 wheel, 跳过")
+        return True
+    print(f"   ✓ {len(whls)} 个 wheel: {', '.join(w.name for w in whls)}")
+    try:
+        subprocess.run(["ssh", SERVER, f"mkdir -p {REMOTE}/wheels/{plat}"],
+                       check=False, capture_output=True, timeout=15)
+        subprocess.run(
+            ["scp", *[str(w) for w in whls], f"{SERVER}:{REMOTE}/wheels/{plat}/"],
+            check=True, capture_output=True, text=True, timeout=300,
+        )
+        print(f"   ✓ wheels 已上传 → {REMOTE}/wheels/{plat}/")
+    except Exception as e:
+        print(f"   ⚠ wheels 上传失败(应用包仍会发布, 安装端将回退在线源): {e}")
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+    return True
+
 def _verify_upload(pkg_path):
     """上传后通过 HTTP HEAD 验证文件是否可访问。返回 True/False。"""
     import urllib.request, ssl
@@ -295,6 +344,7 @@ def publish_one(app_dir, *, upload=True, index_override=None):
     
     if upload:
         _ensure_remote_dirs()
+        upload_app_wheels(pkg_meta)
         print(f"🚀 上传 {zip_name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
         try:
             subprocess.run(

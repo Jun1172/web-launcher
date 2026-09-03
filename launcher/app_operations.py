@@ -13,8 +13,9 @@ import zipfile
 from pathlib import Path
 from . import config
 from .config import BASE, APPS_DIR, vt
-from .app_registry import reload_apps, derive_group
+from .app_registry import reload_apps, derive_group, find_app
 from .process_manager import close_app
+from .deps_installer import install_app_deps
 from .repo import repo_get, repo_index
 from .zipio import atomic_extract_zip
 
@@ -77,8 +78,15 @@ def do_install(aid):
     ok, msg = atomic_extract_zip(data, target_dir, expected_sha256=meta["sha256"])
     if not ok:
         return False, msg
-        
+
     reload_apps()
+    # 声明了 deps 的应用: 自动安装依赖到 <app>/site/
+    app = find_app(aid)
+    if app and app.get("deps"):
+        dok, dmsg = install_app_deps(app)
+        if not dok:
+            safe_print(f"[WARN] {aid} 依赖安装失败: {dmsg}")
+            return False, f"应用已安装但依赖安装失败: {dmsg}"
     return True, "ok"
 
 

@@ -29,7 +29,7 @@
 ## ✨ 核心特性
 
 ### 1. 进程启动 + 端口就绪探测
-- launcher 用 `subprocess.Popen` 拉起应用进程（`.py` 自动前缀 `sys.executable`，其他直接执行）
+- launcher 用 `subprocess.Popen` 拉起应用进程；`.py`/`.pyc` 自动前缀解释器（**优先随身 runtime**，无 runtime 时回退注册表文件关联/PATH，见"应用运行时"一节）
 - 若 `app.json` 声明了 `port`，启动后用 `socket.create_connection` 轮询端口直到监听成功（默认 6s 超时）
 - 无 `port` 的进程型应用启动即视为就绪
 - 跨平台 Popen kwargs：Windows 隐藏控制台（`CREATE_NO_WINDOW`），POSIX 设新会话以便后续 `killpg`
@@ -51,9 +51,34 @@
 - 安装 / 升级到最新版本
 
 ### 5. 多语言 cmd 解析
-- `.py` / `.pyw`：自动前缀 `sys.executable`
+- `.py` / `.pyw` / `.pyc`：自动前缀 Python 解释器（随身 runtime 优先，见"应用运行时"一节）
 - `.exe` / ELF / 任意可执行文件：直接执行
 - 当前**不透传** `env`
+
+### 5.5 应用运行时与依赖管理（runtime + site/）
+
+每个 Python 应用**自带独立依赖环境**，目标机无需安装 Python、无需手动 pip：
+
+```
+<launcher 根>/
+├── launcher.exe
+├── runtime/win-x64/          ← 内嵌 Python 3.11（含 pip），所有应用共享，约 38MB
+├── wheels/win-x64/           ← 可选：离线安装用的 wheels 缓存
+└── apps/etws/iqcache-sync/
+    ├── site/                 ← 本应用专属依赖（自动安装，物理隔离）
+    ├── app.pyc + app.py      ← protect 应用：编译字节码 + 几行启动器
+    └── app.json              ← "deps": ["paramiko"] 声明依赖
+```
+
+**工作流程**：
+- **发布**（`publish.py`）：app.json 声明 `deps` → 自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
+- **安装**（`launcher/deps_installer.py`）：商店安装后自动装依赖到应用 `site/`，顺序为本地 wheels 离线装 → repo 内网源在线装 → 公网源（清华镜像）回退；已装检测，重装升级秒过
+- **启动**（`launcher/process_manager.py`）：`.py`/`.pyc` 应用优先用随身 runtime 执行（版本可控、不依赖目标机 PATH）；应用有 `site/` 时自动注入 `PYTHONPATH`
+- **源码保护**（`protect: true`）：发布时 `.py` 编译为 `.pyc`，包内不含源码；入口是几行的 runpy 启动器
+
+**制作 runtime**：`python runtime/make_runtime.py`（Windows x64，基于官方 embeddable 包）。runtime/wheels 为二进制产物，**不进 git**（`.gitignore` 已排除），随时可重建。
+
+**runtime 升级**（如 3.11 → 3.13）：改 `make_runtime.py` 的 `PY_VER` 重新生成 → 整目录替换部署机的 `runtime/win-x64/` → **重新发布所有 protect 应用**（`.pyc` 字节码绑定 Python 大版本）→ 重新分发。
 
 ### 6. Launcher 自更新（双模式 OTA）
 - `/api/launcher/update` 触发 → `do_launcher_update` 用 `getattr(sys, "frozen", False)` 区分：
@@ -82,11 +107,12 @@
 │  Launcher (Python stdlib, http.server, port 8000)  │
 │  ─────────────────────────────────────────────────  │
 │  launcher.py            ← 薄壳入口                  │
-│  launcher/              ← 13 个功能模块             │
+│  launcher/              ← 14 个功能模块             │
 │    ├ config.py          ← 配置加载/路径常量/工具函数 │
 │    ├ app_registry.py    ← 应用扫描/注册表/group推导  │
 │    ├ process_manager.py ← spawn/port_probe/close   │
 │    ├ app_operations.py  ← install/uninstall         │
+│    ├ deps_installer.py  ← 应用依赖自动安装(site/)   │
 │    ├ repo.py            ← 仓库索引/HTTP 客户端      │
 │    ├ zipio.py           ← 原子解压工具             │
 │    ├ http_handler.py    ← 路由                      │
@@ -96,11 +122,14 @@
 │    ├ window_win32.py    ← Win32 无边框窗口/缩放控制 │
 │    ├ __main__.py        ← 进程入口（HTTP+pywebview）│
 │    └ templates/         ← 布局/主题模板（4+3）      │
-│  publish.py             ← 发布到仓库                │
+│  publish.py             ← 发布到仓库（含 wheels 上传）│
+│  runtime/make_runtime.py ← 重建内嵌 Python runtime  │
 │  ─────────────────────────────────────────────────  │
 │  • 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务面板）  │
 │  • 应用生命周期（spawn / port_probe / graceful stop）│
 │  • 安装/卸载 + 受保护分组（system 不可卸载）        │
+│  • 依赖管理（deps 声明 → wheels 共享 → site/ 隔离）│
+│  • 源码保护（protect: pyc + runpy 启动器）         │
 │  • 应用商店详情弹窗                                │
 │  • 用户布局覆盖（layout.json：dock/hidden）        │
 │  • 自更新（开发态 zip 覆盖 / 编译态 bat/sh 替换）  │
@@ -133,6 +162,14 @@ python launcher.py
 
 需要 Python ≥ 3.8，无第三方依赖（标准库足够）。
 
+### 部署到目标机（免安装 Python）
+
+1. `package.bat` 打包 → `dist/launcher.exe`
+2. `python runtime/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`
+3. 携带 `config.json` + `apps/` 整目录分发
+
+目标机双击 launcher.exe 即可：所有 Python 应用由随身 runtime 执行，声明了 `deps` 的应用在商店安装时自动装依赖（离线机可把 wheels 拷到 `wheels/win-x64/`）。
+
 ## 📋 app.json Schema
 
 应用清单文件，放在 `apps/system/<id>/app.json` 或 `apps/user/<id>/app.json`。
@@ -142,12 +179,14 @@ python launcher.py
 | `id` | string | ✅ | — | 应用唯一标识（与目录名一致） |
 | `name` | string | ✅ | — | 显示名称 |
 | `version` | string | ✅ | — | 语义化版本号（`1.0.0`） |
-| `cmd` | string[] | ❌ | — | 启动命令；`.py`/`.pyw` 自动前缀 `sys.executable`，其他直接执行 |
-| `port` | int | ❌ | — | 建议端口（被占时 launcher 自动分配随机端口）；用于 TCP 就绪探测 + iframe URL |
+| `cmd` | string[] | ❌ | — | 启动命令；`.py`/`.pyw`/`.pyc` 自动前缀解释器（runtime 优先），其他直接执行 |
+| `port` | int | ❌ | — | 建议端口（被占时 launcher 自动分配随机端口）；实际端口经环境变量 `LAUNCHER_APP_PORT` 传给应用（应用必须读此变量，不得硬编码）；用于 TCP 就绪探测 + iframe URL |
 | `icon` | string | ❌ | 📦 | emoji 图标 |
 | `color` | string | ❌ | #999 | 主题色（CSS） |
 | `group` | string | ❌ | `"user"` | 分组来源；`"system"` 受保护不可卸载 |
 | `dock` | bool | ❌ | false | 是否常驻底部 Dock（用户可用 layout.json 覆盖） |
+| `deps` | string[] | ❌ | — | Python 依赖声明（如 `["paramiko", "numpy>=1.24"]`）；发布时自动上传 wheels，安装时自动装入应用 `site/` |
+| `protect` | bool | ❌ | false | 发布源码保护：`.py` 编译为 `.pyc` 出包（入口是几行 runpy 启动器），包内不含源码 |
 | `changelog` | string | ❌ | — | 版本说明 |
 | `released` | string | ❌ | — | 发布时间（ISO 8601） |
 
@@ -221,6 +260,22 @@ python publish.py --group business
 python publish.py apps/user/hello --dry-run
 ```
 
+app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并上传到 repo `/wheels/<平台>/`；声明 `protect: true` 的应用以 `.pyc` 出包（不含源码）。
+
+### 仓库结构（远端）
+
+```
+/var/www/repo/
+├── index.json              # 应用清单 + launcher 元信息
+├── packages/
+│   ├── hello-1.0.0.zip
+│   ├── weather-1.0.0.zip
+│   └── launcher-1.0.0.zip   # launcher 自更新包
+└── wheels/win-x64/          # 依赖 wheels（全部应用共享）
+    ├── paramiko-5.0.0-py3-none-any.whl
+    └── cryptography-*.whl
+```
+
 ### 发布 Launcher 自身更新
 
 ```bash
@@ -232,17 +287,6 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 通过 `GET /api/launcher/version` 查看本地/远端版本对比，`GET /api/launcher/update` 触发 OTA 更新。
 
 > 注：外部独立更新工具（`launcher_updater.py`）尚未实现，当前仅支持通过 UI 触发 OTA；见路线图。
-
-### 仓库结构（远端）
-
-```
-/var/www/repo/
-├── index.json              # 应用清单 + launcher 元信息
-└── packages/
-    ├── hello-1.0.0.zip
-    ├── weather-1.0.0.zip
-    └── launcher-1.0.0.zip   # launcher 自更新包
-```
 
 ## 🎯 内置应用
 
@@ -257,7 +301,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 | ⏱️ 番茄钟 clock | 8102 | 计时器 demo |
 | 📊 系统信息 sysinfo | 8103 | CPU / 内存 / 磁盘 + 版本信息 + 已安装应用列表 |
 | ⚙️ 设置 settings | 8104 | 仓库地址 / BASIC 认证 / SSL 校验配置 |
-| 📖 md-viewer | 8154 | 本地 Markdown 文档查看器 |
+| 📖 md-viewer | 8154 | 说明书中心：自动聚合全部应用的 README/docs 成目录树，支持 Markdown 渲染与 HTML 说明书（iframe 加载） |
 
 ### 用户应用 demo（`apps/user/`）
 
@@ -281,6 +325,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 | etws | mqtt-monitor（状态监测） | 8150 |
 | etws | radar-viewer（雷达数据） | 8160 |
 | etws | channel-analyse（通道分析） | 8165 |
+| etws | iqcache-sync（IQ 缓存三端同步，deps: paramiko，protect） | 8210 |
 | ros | ros2-monitor（ROS2 监控） | 8201 |
 | ros | ros2-topic-inspector（话题） | 8203 |
 | ros | ros2-service（服务） | 8204 |
@@ -292,8 +337,8 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 ## 🌐 部署到嵌入式主板
 
 ### 1. Python 环境
-- 推荐 Python 3.10+（兼容性最好）
-- 树莓派 / Jetson：用系统自带 `python3` 即可
+- **Windows 目标机推荐随身 runtime**（`runtime/win-x64/`，见"应用运行时"一节）——目标机免装 Python，版本可控
+- 无 runtime 时需目标机有 Python：推荐 3.10+；树莓派 / Jetson 用系统自带 `python3` 即可
 - 极小设备：用 `python3-minimal` + 手动补 `pip`
 
 ### 2. 跨平台注意事项
@@ -328,13 +373,18 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 - [x] 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务 + 关于 + 商店详情弹窗）
 - [x] 用户级布局覆盖（layout.json：dock / hidden）
 - [x] cpp-hello demo（C++ 应用部署模板）
-- [x] 代码模块化（launcher/ 包 13 个功能模块）
+- [x] 代码模块化（launcher/ 包 14 个功能模块）
+- [x] 应用依赖管理（deps 声明 → wheels 仓库共享 → 应用级 site/ 隔离安装）
+- [x] 内嵌 Python runtime（目标机免装 Python，版本可控）
+- [x] 发布源码保护（protect: pyc + runpy 启动器）
+- [x] 说明书中心（md-viewer 聚合全部应用文档，支持 Markdown/HTML）
 
 ### 待实现
 - [ ] **env 透传**—— 当前 Popen 不传
 - [ ] **status 多状态字段**（starting/restarting/crashed/stopped）—— 当前只有 running: bool
 - [ ] **独立更新工具 launcher_updater.py**（外部触发的 check/update，当前未实现）
 - [ ] **publish.py --binary** 多平台打包
+- [ ] Linux runtime（make_runtime.py 目前仅 Windows x64；Linux 用 portable Python 或静态链接发行包）
 - [ ] 应用间 IPC 总线（发现 + 调用）
 - [ ] 应用资源限制（CPU / 内存配额）
 - [ ] 日志收集与轮转

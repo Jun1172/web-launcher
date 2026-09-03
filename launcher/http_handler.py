@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from . import config
+from .config import safe_print
 from . import app_registry
 from .config import vt
 from .app_registry import find_app
@@ -69,9 +70,21 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── 首页 ──
         if path == "/":
-            self._html(render_home_html(
-                config.LAUNCHER_TITLE, config.LAUNCHER_VERSION,
-            ))
+            try:
+                self._html(render_home_html(
+                    config.LAUNCHER_TITLE, config.LAUNCHER_VERSION,
+                ))
+            except Exception as e:
+                # 渲染失败(如模板文件被杀软拦截/损坏)时给出可见错误页,
+                # 而非断开连接导致浏览器/窗口双白屏, 便于现场定位
+                safe_print(f"[ERR] 首页渲染失败: {e}")
+                self._html(
+                    f"<!DOCTYPE html><html><meta charset='utf-8'>"
+                    f"<body style='font-family:system-ui;padding:40px;color:#b91c1c'>"
+                    f"<h2>首页渲染失败</h2><p>{e}</p>"
+                    f"<p style='color:#666'>常见原因: 杀毒软件拦截了程序文件。"
+                    f"请将本目录加入杀软白名单后重试, 详情见 launcher-stdout.log</p>"
+                    f"</body></html>", status=500)
             return
 
         # ── 应用列表（带运行状态 + 实际端口）──

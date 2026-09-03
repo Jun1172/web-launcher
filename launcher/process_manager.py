@@ -17,13 +17,81 @@
 import os
 import socket
 import subprocess
+import sys
 import threading
 import time
 
 procs = {}         # {app_id: subprocess.Popen}
 actual_ports = {}  # {app_id: 实际监听端口（int）}
-_lock = threading.Lock()   # 保护 procs / actual_ports / _starting 的短操作
+_lock = threading.Lock()   # 保护 procs / actual_ports 的短操作
 _starting = set()          # 正在启动中的 app_id，防止同一应用并发重复启动
+
+
+def _resolve_python():
+    """解析可用的 Python 解释器（仅 Windows，结果缓存）。
+
+    Windows CreateProcess 无法直接执行 .py/.pyc（WinError 193），
+    且部署机 PATH 里可能没有 python 命令。解析优先级：
+      1) 注册表 .py 文件关联的解释器（资源管理器双击 .py 能跑，用它必能跑）
+      2) PATH 中的 python / py
+      3) launcher 以源码运行时的 sys.executable
+    返回 [解释器, 参数...] 列表；找不到返回 None。
+    """
+    if os.name != "nt":
+        return None
+    exe = getattr(_resolve_python, "_cache", None)
+    if exe is not None:
+        return list(exe)
+    found = None
+    # 1) 注册表文件关联: 如 '"D:\\Python\\311\\python.exe" "%1" %*'
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT,
+                            r"Python.File\shell\open\command") as k:
+            cmdline = winreg.QueryValueEx(k, "")[0]
+        if cmdline.startswith('"'):
+            end = cmdline.index('"', 1)
+            cand, rest = cmdline[1:end], cmdline[end + 1:]
+        else:
+            parts = cmdline.split(None, 1)
+            cand = parts[0]
+            rest = parts[1] if len(parts) > 1 else ""
+        cand = os.path.expandvars(cand.strip())
+        if cand and os.path.isfile(cand):
+            found = [cand] + (["-3"] if os.path.basename(cand).lower() == "py.exe" else [])
+    except OSError:
+        pass
+    # 2) PATH
+    if found is None:
+        import shutil
+        for name in ("python", "py"):
+            p = shutil.which(name)
+            if p:
+                found = [p] + (["-3"] if name == "py" else [])
+                break
+    # 3) 源码运行时自身的解释器
+    if found is None and not getattr(sys, "frozen", False):
+        found = [sys.executable]
+    if found:
+        _resolve_python._cache = list(found)
+    return list(found) if found else None
+
+
+def _prep_cmd(cmd):
+    """启动命令预处理。
+
+    Windows 下 cmd[0] 为 .py/.pyw/.pyc 时，前缀解析出的 Python 解释器；
+    其余（exe/bat/显式解释器）与 POSIX 原样返回。
+    """
+    cmd = list(cmd)
+    if os.name != "nt" or not cmd:
+        return cmd
+    first = str(cmd[0])
+    if first.lower().endswith((".py", ".pyw", ".pyc")):
+        py = _resolve_python()
+        if py:
+            return py + cmd
+    return cmd
 
 
 def _alloc_port(preferred=None):
@@ -88,7 +156,7 @@ def open_app(app):
 
             env = os.environ.copy()
             env["LAUNCHER_APP_PORT"] = str(port)
-            p = subprocess.Popen(app["cmd"], env=env, **_popen_kwargs())
+            p = subprocess.Popen(_prep_cmd(app["cmd"]), env=env, **_popen_kwargs())
             procs[aid] = p
 
             # 轮询端口就绪，同时检查进程是否已崩溃
@@ -107,7 +175,7 @@ def open_app(app):
             return {"ok": False, "running": False, "port": None}  # 超时
         else:
             # 无端口的应用：启动进程，等待 0.5s 确认进程存活
-            p = subprocess.Popen(app["cmd"], **_popen_kwargs())
+            p = subprocess.Popen(_prep_cmd(app["cmd"]), **_popen_kwargs())
             procs[aid] = p
             time.sleep(0.5)
             if p.poll() is None:

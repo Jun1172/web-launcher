@@ -4,7 +4,7 @@
 sudo apt update
 sudo apt install -y nginx apache2-utils
 
-sudo mkdir -p /var/www/repo/packages
+sudo mkdir -p /var/www/repo/packages /var/www/repo/wheels
 # 初始化空目录文件
 echo '{"repo":"my-launcher-repo","updated":"","apps":[]}' | sudo tee /var/www/repo/index.json
 
@@ -45,6 +45,12 @@ server {
     # 安装包：版本号命名=内容不可变，放心长缓存
     location /packages/ {
         add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # 应用依赖 wheels（deps 内网在线安装源，按平台分子目录）
+    # 文件名含版本号可长缓存；pip 会先请求索引再取包
+    location /wheels/ {
+        add_header Cache-Control "public, max-age=86400";
     }
 
     gzip on;

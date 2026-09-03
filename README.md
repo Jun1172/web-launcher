@@ -57,7 +57,7 @@
 
 ### 5.5 应用运行时与依赖管理（runtime + site/）
 
-每个 Python 应用**自带独立依赖环境**，目标机无需安装 Python、无需手动 pip：
+每个 Python 应用**自带独立依赖环境**，目标机无需手动 pip：
 
 ```
 <launcher 根>/
@@ -70,10 +70,24 @@
     └── app.json              ← "deps": ["paramiko"] 声明依赖
 ```
 
-**工作流程**：
-- **发布**（`publish.py`）：app.json 声明 `deps` → 自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
+**解释器策略（带了就用，没带用系统的）**：
+
+启动 `.py`/`.pyc` 应用时按以下顺序解析解释器，无需任何配置：
+
+1. **随身 runtime**（exe 旁有 `runtime/win-x64/` 就用）——版本可控、不依赖目标机 PATH，目标机**完全不用装 Python**
+2. **无 runtime 时回退系统 Python**——Windows：注册表 .py 文件关联 → PATH 的 python/py；POSIX：`python3`/`python`
+3. 注意：runtime 不打进 exe（静态资源按目录分发），**部署时需随目录拷贝**；漏拷不报错，自动走第 2 条
+
+| 部署场景 | 携带内容 | 目标机要求 |
+|---|---|---|
+| 常规（推荐） | exe + runtime/ + config.json + apps/ | 无 |
+| 完全离线机器 | 上述 + wheels/win-x64/ | 无 |
+| 轻量试用 | 仅 exe + config.json | Python ≥ 3.8 |
+
+**依赖自动安装**（声明 `deps` 的应用全程零手动）：
+- **发布**（`publish.py`）：自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
 - **安装**（`launcher/deps_installer.py`）：商店安装后自动装依赖到应用 `site/`，顺序为本地 wheels 离线装 → repo 内网源在线装 → 公网源（清华镜像）回退；已装检测，重装升级秒过
-- **启动**（`launcher/process_manager.py`）：`.py`/`.pyc` 应用优先用随身 runtime 执行（版本可控、不依赖目标机 PATH）；应用有 `site/` 时自动注入 `PYTHONPATH`
+- **启动**（`launcher/process_manager.py`）：应用有 `site/` 时自动注入 `PYTHONPATH`
 - **源码保护**（`protect: true`）：发布时 `.py` 编译为 `.pyc`，包内不含源码；入口是几行的 runpy 启动器
 
 **制作 runtime**：`python runtime/make_runtime.py`（Windows x64，基于官方 embeddable 包）。runtime/wheels 为二进制产物，**不进 git**（`.gitignore` 已排除），随时可重建。
@@ -162,13 +176,13 @@ python launcher.py
 
 需要 Python ≥ 3.8，无第三方依赖（标准库足够）。
 
-### 部署到目标机（免安装 Python）
+### 部署到目标机
 
 1. `package.bat` 打包 → `dist/launcher.exe`
 2. `python runtime/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`
 3. 携带 `config.json` + `apps/` 整目录分发
 
-目标机双击 launcher.exe 即可：所有 Python 应用由随身 runtime 执行，声明了 `deps` 的应用在商店安装时自动装依赖（离线机可把 wheels 拷到 `wheels/win-x64/`）。
+目标机双击 launcher.exe 即可。解释器策略为"**带了就用，没带用系统的**"：目录里有 `runtime/` 则所有 Python 应用由它执行（目标机免装 Python）；漏拷不报错，自动回退目标机自己的 Python（要求 ≥ 3.8）。声明了 `deps` 的应用在商店安装时自动装依赖（完全离线的机器把 wheels 拷到 `wheels/win-x64/` 即可离线安装）。详见「应用运行时与依赖管理」一节。
 
 ## 📋 app.json Schema
 

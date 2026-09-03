@@ -1,4 +1,5 @@
 """calculator —— 现代双模式计算器 (极简/安全/全键盘支持)"""
+import os
 import json, os
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -252,4 +253,4 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"[Calculator] 启动成功，监听端口: {PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()

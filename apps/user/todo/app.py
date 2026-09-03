@@ -1,3 +1,4 @@
+import os
 import json, os, sys
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -56,4 +57,4 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(HTML.encode())
     def log_message(self, *a): pass
 
-ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()

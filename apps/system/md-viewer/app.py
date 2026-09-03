@@ -752,7 +752,8 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     ensure_docs()
+
     n_apps = sum(1 for r in scan_roots().values() if r["group"])
     print(f"📚 md-viewer 说明书中心 → http://127.0.0.1:{PORT}")
     print(f"   收录来源: Launcher 项目文档 + {n_apps} 个应用说明书")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), Handler).serve_forever()

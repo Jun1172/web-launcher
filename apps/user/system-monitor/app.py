@@ -840,5 +840,6 @@ setInterval(fetchProcesses, 3000);
 """
 
 if __name__ == "__main__":
-    print(f"[System Monitor] 启动于 http://127.0.0.1:{PORT}")
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    HOST = os.environ.get("APP_HOST", "127.0.0.1")
+    print(f"[System Monitor] 启动于 http://{HOST}:{PORT}")
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

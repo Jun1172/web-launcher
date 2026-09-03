@@ -5,6 +5,7 @@
 - 通过 Launcher 的 GET/POST /api/repo/config 读写 config.json 的 repo 节
 - 保存后 Launcher 立即 reload_config()，无需重启
 """
+import os
 import json, os
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -203,4 +204,4 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()

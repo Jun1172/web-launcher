@@ -1,10 +1,10 @@
 {
   "id": "md-viewer",
-  "name": "Web Launcher 说明书",
+  "name": "说明书中心",
   "icon": "📖",
   "color": "#ec4899",
-  "version": "1.0.0",
-  "changelog": "v1.1.0: 改为 Web Launcher 项目离线说明书",
+  "version": "1.2.0",
+  "changelog": "v1.2.0: 支持 HTML 说明书——docs/ 内 .html/.htm 经 /raw/ 路由 iframe 原样加载，保留原始样式与交互，相对路径图片自然解析；v1.1.0: 统一说明书管理器，自动聚合各应用 docs/ 与 README.md",
   "port": 8154,
   "cmd": ["apps/system/md-viewer/app.py"],
   "dock": true,

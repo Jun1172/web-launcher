@@ -1,6 +1,19 @@
-"""md-viewer —— Web Launcher 项目说明书
-Markdown 文档浏览器：左侧目录树导航 + 右侧渲染阅读 + 本地图片离线加载。
+"""md-viewer —— 说明书中心（统一说明书管理器）
+聚合 web-launcher 全部 APP 的说明书：自动扫描 apps/<group>/<app>/ 的 docs/ 目录
+（无 docs/ 时回退应用根目录的 README.md），按「分组 → 应用 → 文档」组织目录树，
+左侧导航 + 右侧渲染阅读 + 本地图片离线加载，是所有应用说明书的统一阅读入口。
+
 单文件 HTTP 服务（ThreadingHTTPServer），前端 HTML/CSS/JS 全部内嵌，离线可用。
+
+文档来源规则：
+  1. @launcher  → 本应用 docs/（Web Launcher 项目说明书）
+  2. 各 APP     → apps/<group>/<app>/docs/（存在则整目录递归收录）
+  3. 无 docs/   → 收录应用根目录顶层 README.md（不递归，避免混入无关文件）
+
+支持格式：
+  - .md / .markdown → Markdown 渲染阅读
+  - .html / .htm    → iframe 原样加载（保留原始样式与交互，相对图片
+                      经 /raw/ 路径路由自然解析，无需改写说明书内容）
 
 说明：marked.js 完整库体积较大且无法离线可靠内嵌，前端内置一个极简
 Markdown 渲染器，支持标题 / 列表 / 任务列表 / 代码块 / 表格 / 引用 /
@@ -32,15 +45,26 @@ def get_port():
 
 PORT = get_port()
 
-# 应用根目录 & 文档根目录
+# 应用根目录 & 文档目录
 BASE_DIR = Path(__file__).resolve().parent
 DOCS_DIR = BASE_DIR / "docs"
+APPS_DIR = BASE_DIR.parent.parent  # .../apps
+
+# 分组目录名 → 展示名
+GROUP_LABELS = {
+    "etws": "ETWS 雷达调测",
+    "ros": "ROS2",
+    "system": "系统",
+    "user": "用户",
+}
 
 # 目录树中允许展示的文档扩展名（图片在 Markdown 中引用即可，不入树）
-ALLOWED_EXT = {".md", ".markdown"}
+ALLOWED_EXT = {".md", ".markdown", ".html", ".htm"}
 
-# 图片扩展名 -> Content-Type 映射
-IMAGE_CT = {
+# 扩展名 -> Content-Type 映射（/raw/ 路由与 /api/image 共用）
+RAW_CT = {
+    ".html": "text/html; charset=utf-8",
+    ".htm": "text/html; charset=utf-8",
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -50,19 +74,21 @@ IMAGE_CT = {
     ".bmp": "image/bmp",
     ".ico": "image/x-icon",
 }
+# 兼容旧名（Markdown 内嵌图片用）
+IMAGE_CT = RAW_CT
 
 # docs/ 缺失时自动生成的示例 README（运行时兜底，存在则不覆盖）
 SAMPLE_README = """# Web Launcher 项目说明书
 
 这是自动生成的示例文档。把项目说明、应用文档或部署手册放进 `docs/` 目录即可在左侧目录树浏览。
 
-## 快速开始
+## 说明书中心
 
-- 在 `docs/` 放入 Markdown 文档（`.md`）
-- 在 `docs/images/` 放入图片，用相对路径 `![说明](images/xxx.png)` 引用
-- 点击左侧目录树中的文件即可阅读
+本页面已升级为**统一说明书管理器**：自动聚合 `apps/` 下所有应用的说明书。
 
-> 提示：支持子目录分类组织文档。
+- 应用提供 `docs/` 目录 → 整目录收录（支持子目录）
+- 应用仅有根目录 `README.md` → 收录该文件
+- 无任何文档的应用自动隐藏
 """
 
 
@@ -74,41 +100,86 @@ def ensure_docs():
         sample.write_text(SAMPLE_README, encoding="utf-8")
 
 
-def safe_join(rel_path):
-    """把相对路径安全拼接到 docs/ 下，防止路径遍历。
+# ============================== 说明书来源扫描 ==============================
 
-    返回 (绝对 Path, 错误信息)；成功时错误为 None。
+def scan_roots():
+    """扫描全部说明书来源，返回注册表。
+
+    key 为路径前缀（如 "etws/iqcache-sync" 或 "@launcher"），value:
+      {key, label, icon, base, recursive, group}
+    base 为该来源的根目录；recursive=False 时只收录顶层 .md 文件。
     """
-    if not rel_path:
-        return None, "缺少 path 参数"
-    # 统一正斜杠并去掉前导斜杠
-    rel = rel_path.replace("\\", "/").lstrip("/")
-    # 禁止任何 .. 段
-    if ".." in rel.split("/"):
-        return None, "禁止访问上级目录"
-    target = (DOCS_DIR / rel).resolve()
-    # 关键安全校验：resolve 后必须仍在 docs 目录内
-    try:
-        target.relative_to(DOCS_DIR.resolve())
-    except ValueError:
-        return None, "路径越界"
-    return target, None
-
-
-def build_tree(rel_path=""):
-    """递归构建 docs 目录树，返回嵌套结构。
-
-    {
-      "name": "docs",
-      "path": "",
-      "type": "dir",
-      "children": [ {name,path,type,children}, ... ]
+    roots = {}
+    # 1) Launcher 项目自身文档
+    roots["@launcher"] = {
+        "key": "@launcher", "label": "Web Launcher 项目", "icon": "🚀",
+        "base": DOCS_DIR, "recursive": True, "group": None,
     }
-    路径以 docs 根为基准，统一用正斜杠。目录在前、文件名按字母排序。
+    # 2) 各应用文档
+    if APPS_DIR.is_dir():
+        for group_dir in sorted(p for p in APPS_DIR.iterdir() if p.is_dir()):
+            for app_dir in sorted(p for p in group_dir.iterdir() if p.is_dir()):
+                meta_file = app_dir / "app.json"
+                if not meta_file.is_file():
+                    continue
+                try:
+                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                if app_dir.name == "md-viewer":
+                    continue  # 自身文档已在 @launcher 来源中
+                app_id = str(meta.get("id") or app_dir.name)
+                docs = app_dir / "docs"
+                if docs.is_dir():
+                    base, recursive = docs, True
+                elif (app_dir / "README.md").is_file():
+                    base, recursive = app_dir, False  # 仅顶层 README.md
+                else:
+                    continue  # 无说明书的应用不展示
+                key = f"{group_dir.name}/{app_id}"
+                roots[key] = {
+                    "key": key,
+                    "label": str(meta.get("name") or app_id),
+                    "icon": str(meta.get("icon") or "📄"),
+                    "base": base, "recursive": recursive,
+                    "group": group_dir.name,
+                }
+    return roots
+
+
+ROOTS = scan_roots()
+
+
+def resolve(path):
+    """把 'rootkey/relpath' 安全解析到对应来源目录内。
+
+    返回 (绝对 Path, 来源 dict, err)；成功时 err 为 None。
     """
-    full = DOCS_DIR / rel_path if rel_path else DOCS_DIR
+    if not path:
+        return None, None, "缺少 path 参数"
+    p = str(path).replace("\\", "/").lstrip("/")
+    # 长键优先，避免 "a/b" 误配 "a"
+    for key in sorted(ROOTS, key=len, reverse=True):
+        if p.startswith(key + "/"):
+            rel = p[len(key) + 1:]
+            if ".." in rel.split("/"):
+                return None, None, "禁止访问上级目录"
+            root = ROOTS[key]
+            base = root["base"].resolve()
+            target = (root["base"] / rel).resolve()
+            try:
+                target.relative_to(base)
+            except ValueError:
+                return None, None, "路径越界"
+            return target, root, None
+    return None, None, "未知文档来源"
+
+
+def build_doc_tree(base, rel_path="", recursive=True):
+    """递归构建单个来源内的文档树节点。目录在前、文件名按字母排序。"""
+    full = base / rel_path if rel_path else base
     node = {
-        "name": rel_path.split("/")[-1] if rel_path else "docs",
+        "name": rel_path.split("/")[-1] if rel_path else base.name,
         "path": rel_path,
         "type": "dir",
         "children": [],
@@ -123,7 +194,10 @@ def build_tree(rel_path=""):
     for entry in entries:
         child_rel = f"{rel_path}/{entry.name}" if rel_path else entry.name
         if entry.is_dir():
-            node["children"].append(build_tree(child_rel))
+            if recursive:
+                sub = build_doc_tree(base, child_rel, True)
+                if sub["children"]:
+                    node["children"].append(sub)  # 只装图片等非文档的空目录不显示
         elif entry.suffix.lower() in ALLOWED_EXT:
             node["children"].append({
                 "name": entry.name,
@@ -134,6 +208,46 @@ def build_tree(rel_path=""):
     return node
 
 
+def build_library():
+    """构建整个说明书库目录树：Launcher 项目 → 各分组 → 各应用 → 文档。"""
+    root_node = {"name": "说明书库", "path": "", "type": "dir", "children": []}
+
+    # 1) Launcher 项目文档（固定排最前）
+    lr = ROOTS["@launcher"]
+    ln = build_doc_tree(lr["base"], "", True)
+    ln["name"] = lr["label"]
+    ln["icon"] = lr["icon"]
+    ln["path"] = "@launcher"
+    for c in ln["children"]:
+        c["path"] = "@launcher/" + c["path"]
+    root_node["children"].append(ln)
+
+    # 2) 按分组聚合各应用
+    groups = {}
+    for root in ROOTS.values():
+        if root["group"] is None:
+            continue
+        groups.setdefault(root["group"], []).append(root)
+    for gname in sorted(groups):
+        gnode = {
+            "name": GROUP_LABELS.get(gname, gname),
+            "path": "", "type": "dir", "icon": "🗂", "children": [],
+        }
+        for root in sorted(groups[gname], key=lambda r: r["label"]):
+            an = build_doc_tree(root["base"], "", root["recursive"])
+            if not an["children"]:
+                continue
+            an["name"] = root["label"]
+            an["icon"] = root["icon"]
+            an["path"] = root["key"]
+            for c in an["children"]:
+                c["path"] = root["key"] + "/" + c["path"]
+            gnode["children"].append(an)
+        if gnode["children"]:
+            root_node["children"].append(gnode)
+    return root_node
+
+
 # ============================== 内嵌前端 ==============================
 # 使用原始字符串避免 JS 正则的反斜杠被 Python 转义；注意内部不能出现 """
 HTML = r"""<!DOCTYPE html>
@@ -141,7 +255,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>📚 Web Launcher 项目说明书</title>
+<title>📚 说明书中心</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -155,7 +269,7 @@ body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaH
 .app{display:flex;height:100vh;overflow:hidden}
 
 /* 侧栏 */
-.sidebar{width:300px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);
+.sidebar{width:320px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);
   overflow-y:auto;transition:transform .25s ease;z-index:30}
 .sidebar-head{position:sticky;top:0;background:var(--panel);padding:16px 18px 12px;
   border-bottom:1px solid var(--border);font-weight:700;color:var(--heading);font-size:15px}
@@ -217,6 +331,11 @@ details[open]>summary .arrow{transform:rotate(90deg)}
 .md hr{border:0;border-top:1px solid var(--border);margin:26px 0}
 .md del{color:var(--mute)}
 
+/* HTML 说明书: iframe 原样加载(保留原始样式, iframe 内部自滚动) */
+.content.htmldoc{display:flex;padding:14px 18px 18px;overflow:hidden}
+.content.htmldoc .md{flex:1;min-height:0;max-width:none;margin:0;display:flex}
+.html-frame{flex:1;width:100%;border:1px solid var(--border);border-radius:10px;background:#fff}
+
 /* 状态 */
 .loading,.empty,.error{padding:60px 20px;text-align:center;color:var(--mute)}
 .error{color:#f85149}
@@ -236,8 +355,8 @@ details[open]>summary .arrow{transform:rotate(90deg)}
 <body>
 <div class="app">
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-head">📚 Web Launcher 项目说明书
-      <span class="sub">md-viewer · :__PORT__</span>
+    <div class="sidebar-head">📚 说明书中心
+      <span class="sub">全部应用说明书 · 统一入口 · :__PORT__</span>
     </div>
     <div id="tree"></div>
   </aside>
@@ -254,7 +373,8 @@ details[open]>summary .arrow{transform:rotate(90deg)}
 <script>
 // ===================== 极简 Markdown 渲染器 =====================
 // 说明：marked.js 完整库无法离线可靠内嵌，此处自行实现极简渲染器。
-// 当前阅读的文件路径（相对 docs 根），用于解析图片 / 内部链接的相对路径
+// 当前阅读的文件路径（含来源前缀，如 etws/iqcache-sync/docs/README.md），
+// 用于解析图片 / 内部链接的相对路径
 var currentFile = '';
 
 function escapeHtml(s){
@@ -278,7 +398,7 @@ function resolveImg(src){
   })();
   return '/api/image?path=' + encodeURIComponent(resolved);
 }
-// 内部 markdown 链接相对路径 -> 相对 docs 根
+// 内部 markdown 链接相对路径 -> 相对当前来源根
 function resolveMd(src){
   var n = src.replace(/\\/g,'/');
   if(n.charAt(0)==='/') return n.slice(1);
@@ -304,7 +424,7 @@ function renderInline(text){
     if(/^(https?:|data:|\/\/|mailto:|tel:|#)/i.test(url)){
       return '<a href="'+q(url)+'"'+(title?' title="'+q(title)+'"':'')+' target="_blank" rel="noopener">'+t+'</a>';
     }
-    if(/\.md$|\.markdown$/i.test(url)){
+    if(/\.(md|markdown|html?)$/i.test(url)){
       return '<a href="javascript:void(0)" data-md="'+q(resolveMd(url))+'"'+(title?' title="'+q(title)+'"':'')+' onclick="loadFile(this.dataset.md)">'+t+'</a>';
     }
     return '<a href="'+q(url)+'"'+(title?' title="'+q(title)+'"':'')+' target="_blank" rel="noopener">'+t+'</a>';
@@ -441,26 +561,33 @@ function renderMarkdown(src){
 }
 
 // ===================== 目录树 =====================
-function renderTreeNodes(nodes, container){
-  container.innerHTML = '';
+// 文件路径 -> 层级名称链（用于面包屑），由 renderTreeNodes 构建时填充
+var fileChain = {};
+
+function renderTreeNodes(nodes, container, ancestors){
+  ancestors = ancestors || [];
   nodes.forEach(function(node){
     if(node.type === 'dir'){
+      var chain = ancestors.concat([node.name]);
       var det = document.createElement('details');
-      det.open = true;
+      det.open = (ancestors.length < 1);  // 顶层分组默认展开, 应用层默认收起
       var sum = document.createElement('summary');
       sum.className = 'tree-folder';
-      sum.innerHTML = '<span class="arrow">▶</span><span>📁</span> <span class="fname">'+escapeHtml(node.name)+'</span>';
+      var icon = node.icon || '📁';
+      sum.innerHTML = '<span class="arrow">▶</span><span>'+escapeHtml(icon)+'</span> <span class="fname">'+escapeHtml(node.name)+'</span>';
       det.appendChild(sum);
       var child = document.createElement('div');
       child.className = 'tree-children';
       det.appendChild(child);
-      renderTreeNodes(node.children, child);
+      renderTreeNodes(node.children, child, chain);
       container.appendChild(det);
     } else {
       var f = document.createElement('div');
       f.className = 'tree-file';
       f.dataset.path = node.path;
-      f.innerHTML = '<span class="ic">📄</span>'+escapeHtml(node.name);
+      var ic = /\.html?$/i.test(node.name) ? '🌐' : '📄';
+      f.innerHTML = '<span class="ic">'+ic+'</span>'+escapeHtml(node.name);
+      fileChain[node.path] = ancestors.concat([node.name]);
       f.onclick = function(){ loadFile(node.path); };
       container.appendChild(f);
     }
@@ -480,8 +607,9 @@ function findFirstFile(node){
 function renderBreadcrumb(path){
   var bc = document.getElementById('breadcrumb');
   if(!path){ bc.innerHTML = ''; return; }
-  var html = '<span class="bc-root">📖 docs</span>';
-  path.split('/').forEach(function(seg){
+  var chain = fileChain[path] || path.split('/');
+  var html = '<span class="bc-root">📚 说明书中心</span>';
+  chain.forEach(function(seg){
     html += '<span class="bc-sep">/</span><span class="bc-item">'+escapeHtml(seg)+'</span>';
   });
   bc.innerHTML = html;
@@ -495,6 +623,18 @@ function loadFile(path){
   });
   if(window.innerWidth <= 820) toggleSidebar(false);
   var content = document.getElementById('content');
+  var wrap = document.querySelector('.content');
+  // HTML 说明书: iframe 经 /raw/ 路由原样加载, 相对图片自然解析
+  // 注意: 内层保留 .md class, CSS ".content.htmldoc .md" 依赖它撑满容器
+  // (flex-direction:row 下无样式的 flex item 会按内容收缩到 iframe 默认 300px)
+  if(/\.html?$/i.test(path || '')){
+    wrap.classList.add('htmldoc');
+    content.className = 'md';
+    var segs = (path || '').split('/').map(encodeURIComponent).join('/');
+    content.innerHTML = '<iframe class="html-frame" src="/raw/' + segs + '"></iframe>';
+    return;
+  }
+  wrap.classList.remove('htmldoc');
   content.className = 'md';
   content.innerHTML = '<div class="loading">加载中…</div>';
   fetch('/api/file?path=' + encodeURIComponent(path))
@@ -524,7 +664,7 @@ function init(){
       renderTreeNodes(tree.children || [], document.getElementById('tree'));
       var first = findFirstFile(tree);
       if(first) loadFile(first);
-      else document.getElementById('content').innerHTML = '<div class="empty">docs 目录为空，放入 .md 文档试试</div>';
+      else document.getElementById('content').innerHTML = '<div class="empty">说明书库为空：各应用在 docs/ 放入 .md 或在应用根目录提供 README.md 即可被收录</div>';
     })
     .catch(function(e){
       document.getElementById('content').innerHTML = '<div class="error">⚠️ 目录加载失败：'+escapeHtml(e.message)+'</div>';
@@ -553,6 +693,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(json.dumps(obj, ensure_ascii=False), "application/json; charset=utf-8", code)
 
     def do_GET(self):
+        global ROOTS
         parsed = urlparse(self.path)
         path = parsed.path
         qs = parse_qs(parsed.query)
@@ -560,10 +701,11 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._send(HTML.replace("__PORT__", str(PORT)), "text/html; charset=utf-8")
         elif path == "/api/tree":
-            self._json(build_tree())
+            ROOTS = scan_roots()  # 每次请求重扫, 新装应用即时出现
+            self._json(build_library())
         elif path == "/api/file":
             rel = qs.get("path", [None])[0]
-            target, err = safe_join(rel)
+            target, _root, err = resolve(rel)
             if err:
                 self._json({"error": err}, 400)
                 return
@@ -577,7 +719,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"path": rel, "content": content})
         elif path == "/api/image":
             rel = qs.get("path", [None])[0]
-            target, err = safe_join(rel)
+            target, _root, err = resolve(rel)
             if err:
                 self._send(err, "text/plain; charset=utf-8", 400)
                 return
@@ -585,6 +727,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._send("图片不存在", "text/plain; charset=utf-8", 404)
                 return
             ctype = IMAGE_CT.get(target.suffix.lower(), "application/octet-stream")
+            self._send(target.read_bytes(), ctype, 200, "no-cache")
+        elif path.startswith("/raw/"):
+            # iframe 原样加载 HTML 说明书：src="/raw/<来源前缀>/<相对路径>"。
+            # HTML 内的相对引用(图片/CSS)会基于该 URL 解析, 自然回落到本路由,
+            # 无需改写说明书内容。路径需 URL 解码(中文文件名)。
+            from urllib.parse import unquote
+            rel = unquote(path[len("/raw/"):])
+            target, _root, err = resolve(rel)
+            if err:
+                self._send(err, "text/plain; charset=utf-8", 400)
+                return
+            if not target.is_file():
+                self._send("文件不存在", "text/plain; charset=utf-8", 404)
+                return
+            ctype = RAW_CT.get(target.suffix.lower(), "application/octet-stream")
             self._send(target.read_bytes(), ctype, 200, "no-cache")
         else:
             self._send("Not Found", "text/plain; charset=utf-8", 404)
@@ -595,6 +752,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     ensure_docs()
-    print(f"📖 md-viewer → http://127.0.0.1:{PORT}")
-    print(f"   文档目录: {DOCS_DIR}")
+    n_apps = sum(1 for r in scan_roots().values() if r["group"])
+    print(f"📚 md-viewer 说明书中心 → http://127.0.0.1:{PORT}")
+    print(f"   收录来源: Launcher 项目文档 + {n_apps} 个应用说明书")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

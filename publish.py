@@ -9,11 +9,20 @@ python publish.py --group admin       # 一键发布指定分组的应用
 python publish.py --list              # 仅列出，不发布
 python publish.py --launcher          # 打包并发布 launcher 主程序更新
 python publish.py --sync              # 对照远端 packages/ 清理 index.json 中失效条目
+
+源码保护 (protect):
+  app.json 里加 "protect": true 的应用, 发布时自动去源码化:
+  - .py 编译为同位置 .pyc 入包(zip 内无 .py 源码)
+  - .html/.htm 轻量压缩(去注释/空行)
+  - app.json 的 cmd 改写为 ["python", "apps/xx/app.pyc"], 包内外一致
+  安装端与 launcher 零改动(cmd 语义不变, LAUNCHER_APP_PORT 照常传递)。
+  注意: pyc 绑定 Python 版本, 发布机的 Python 大版本需与部署机一致。
 """
 import argparse
 import datetime
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -130,6 +139,54 @@ def ensure_index():
         index = {"repo": "my-launcher-repo", "updated": "", "apps": []}
     return index, index_tmp
 
+# ============================== 源码保护 (protect) ==============================
+
+def _minify_html_text(text):
+    """轻量 HTML 压缩: 去 <!-- --> 注释 / 行尾空白 / 空行。保守策略, 不改语义。"""
+    import re
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    return "\n".join(ln.rstrip() for ln in text.splitlines() if ln.strip())
+
+
+def _rewrite_cmd_pyc(cmd):
+    """["apps/x/app.py"] -> ["python", "apps/x/app.pyc"]
+    .pyc 没有文件关联, 必须显式带解释器; 已带 python 前缀的只换后缀。"""
+    out = []
+    for part in cmd:
+        if isinstance(part, str) and part.endswith(".py"):
+            if not out or out[0] not in ("python", "python3", "py"):
+                out.append("python")
+            part = part[:-3] + ".pyc"
+        out.append(part)
+    return out
+
+
+def build_pyc_stage(app_dir):
+    """把 app_dir 内容编译/复制到临时目录: .py -> 同位置 .pyc(源码不落副本),
+    .html/.htm 压缩, 其余原样。返回 staging Path(调用方负责清理)。"""
+    import py_compile
+    import tempfile
+    stage = Path(tempfile.mkdtemp(prefix="publish_pyc_"))
+    for f in app_dir.rglob("*"):
+        if not f.is_file():
+            continue
+        if ".venv" in f.parts or "__pycache__" in f.parts or f.suffix == ".pyc":
+            continue
+        rel = f.relative_to(app_dir)
+        dst = stage / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if f.suffix == ".py":
+            py_compile.compile(str(f), cfile=str(dst.with_suffix(".pyc")),
+                               dfile=rel.as_posix(), doraise=True)
+        elif f.suffix.lower() in (".html", ".htm"):
+            # newline="\n": 避免 Windows 下 \r\n 转写抵消压缩收益
+            dst.write_text(_minify_html_text(f.read_text(encoding="utf-8")),
+                           encoding="utf-8", newline="\n")
+        else:
+            shutil.copy2(f, dst)
+    return stage
+
+
 def build_entry(meta, zip_path):
     """生成 index.json 里的单个 app 条目"""
     # 白名单：只保留实际生效的字段（system 已废弃，group 为分组来源）
@@ -174,20 +231,41 @@ def publish_one(app_dir, *, upload=True, index_override=None):
     kind_tag = "🛡️" if group == "system" else "📦"
     print(f"{kind_tag} 打包 {meta['name']} v{meta['version']} (id={meta['id']}, group={group})...")
 
+    # ---- 源码保护: protect=true 时 .py 编译为 .pyc 出包, 页面压缩, cmd 改写 ----
+    protect = bool(meta.get("protect"))
+    pkg_meta = meta
+    stage = None
+    if protect:
+        stage = build_pyc_stage(app_dir)
+        pkg_meta = dict(meta)
+        pkg_meta["cmd"] = _rewrite_cmd_pyc(meta.get("cmd") or [])
+        # 包内 app.json 同步改写, 保证安装后 cmd 指向存在的 .pyc
+        (stage / "app.json").write_text(
+            json.dumps(pkg_meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print("   🔒 源码保护: pyc 模式(不含 .py 源码, 页面已压缩)")
+
+    src_root = stage if stage else app_dir
+    app_rel = app_dir.relative_to(APPS_DIR.parent)  # 如 apps/etws/iqcache-sync
     zip_path = BASE / zip_name
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in app_dir.rglob("*"):
-            if not f.is_file():
-                continue
-            if ".venv" in f.parts or f.suffix == ".pyc" or f.name == "__pycache__":
-                continue
-            if f.name.endswith(".zip.tmp") or f.name == zip_name:
-                continue
-            arcname = f.relative_to(APPS_DIR.parent)  
-            z.write(f, arcname.as_posix())
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in src_root.rglob("*"):
+                if not f.is_file():
+                    continue
+                if ".venv" in f.parts or f.name == "__pycache__":
+                    continue
+                if not protect and f.suffix == ".pyc":
+                    continue  # 未保护的应用维持原逻辑: 不带 pyc 缓存
+                if f.name.endswith(".zip.tmp") or f.name == zip_name:
+                    continue
+                arcname = (app_rel / f.relative_to(src_root)) if stage else f.relative_to(APPS_DIR.parent)
+                z.write(f, arcname.as_posix())
+    finally:
+        if stage:
+            shutil.rmtree(stage, ignore_errors=True)
 
     print(f"   ✓ {zip_name} ({zip_path.stat().st_size} bytes, sha256={sha256(zip_path)[:12]}...)")
-    entry = build_entry(meta, zip_path)
+    entry = build_entry(pkg_meta, zip_path)
     
     index = index_override
     index_tmp = None

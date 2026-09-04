@@ -30,6 +30,7 @@
     background: #eef2ff; color: var(--brand-d); border: 1px solid #dbe3ff;
   }
   .chip.http { background: #eafaf0; color: #1f7a45; border-color: #cdeed8; }
+  .chip.repo { background: #f0f2f7; color: #6b7785; border-color: #e6eaf1; }
   main { padding: 18px 22px 60px; max-width: 1180px; margin: 0 auto; }
   section { margin-bottom: 26px; }
   section h2 {
@@ -91,18 +92,19 @@
     <div class="sub" id="subtitle"></div>
   </div>
   <div class="spacer"></div>
+  <span class="chip repo" id="repoChip"></span>
   <span class="chip" id="modeChip">…</span>
 </header>
 <main id="main"></main>
 <footer>
-  所有脚本来自各仓库根目录，运行目录即对应仓库。新增/修改工具请编辑 <code>tools.json</code>。
+  只管理本仓库的脚本（tools/ 下），运行时工作目录即本仓库根。新增/修改工具请编辑 <code>tools/tools.json</code>。
 </footer>
 
 <script>
 const TOOLS = /*__TOOLS__*/{};
 const byId = {};
 (TOOLS.tools || []).forEach(t => byId[t.id] = t);
-const missing = new Set(TOOLS._missing_repos || []);
+const missing = new Set(TOOLS._missing_tools || []);
 
 function setMode() {
   const chip = document.getElementById('modeChip');
@@ -111,6 +113,7 @@ function setMode() {
   else { chip.textContent = '浏览器 / HTTP'; chip.classList.add('http'); }
   document.getElementById('title').textContent = TOOLS.title || '工具箱';
   document.getElementById('subtitle').textContent = TOOLS.subtitle || '';
+  document.getElementById('repoChip').textContent = TOOLS._repo_name || '';
 }
 
 function render() {
@@ -135,8 +138,7 @@ function card(t) {
   el.className = 'card' + (t.danger ? ' danger' : '');
   el.id = 'card-' + t.id;
 
-  const isMissing = missing.has(t.repo);
-  let repoName = t.repo || '';
+  const isMissing = missing.has(t.id);
   let argsHtml = '';
   if (t.args && t.args.length && !isMissing) {
     argsHtml = '<div class="args">';
@@ -152,11 +154,10 @@ function card(t) {
   }
 
   const badges = (t.danger ? '<span class="badge danger">危险</span>' : '') +
-    (isMissing ? '<span class="badge missing">仓库缺失</span>' : '');
+    (isMissing ? '<span class="badge missing">脚本缺失</span>' : '');
 
   el.innerHTML =
-    '<div class="chead"><span class="name">' + esc(t.name) + '</span>' +
-    '<span class="repo">' + esc(repoName) + '</span>' + badges + '</div>' +
+    '<div class="chead"><span class="name">' + esc(t.name) + '</span>' + badges + '</div>' +
     '<div class="desc">' + esc(t.desc || '') + '</div>' +
     argsHtml +
     '<div class="actions">' +
@@ -164,7 +165,7 @@ function card(t) {
       '<button class="clear" onclick="clearOut(\'' + t.id + '\')">清空输出</button>' +
     '</div>' +
     '<pre class="out" id="out-' + t.id + '" style="display:none"></pre>' +
-    (isMissing ? '<div class="hint">该工具指向的仓库目录不存在，无法运行。</div>' : '');
+    (isMissing ? '<div class="hint">该工具指向的脚本不存在，无法运行。</div>' : '');
   return el;
 }
 

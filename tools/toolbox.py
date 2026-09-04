@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
-"""WebLauncher 统一工具箱（桌面窗口 / HTTP 双模式）
+"""统一工具箱（**只管本仓库**，桌面窗口 / HTTP 双模式）
 
-把散落在两个仓库里的开发 / 发布脚本（运行、打包、发布、重建产物、清理）
-集中到一个带界面的入口里：每个工具有中文名称与说明，点一下就能跑，
+把本仓库 tools/ 里的开发 / 发布脚本（运行、打包、发布、重建产物、清理）
+集中到一个带界面的入口：每个工具有中文名称与说明，点一下就能跑，
 并在界面里实时看到输出。
+
+每个仓库各自带一份本工具（tools/toolbox.py + tools.json + toolbox.html），
+**只管理自己仓库的脚本，互不交叉**。入口为 `python tools/toolbox.py`（跨平台，
+不用 .bat）。
 
 两种运行模式（自动选择）：
   - 桌面窗口：本机装了 pywebview + WebView2 时，弹出一个原生桌面窗口。
@@ -13,9 +17,9 @@
 所有工具定义都在同目录的 tools.json 里，想增删改工具只动那个 JSON 即可。
 
 用法:
-    python toolbox.py            # 优先桌面窗口，不行则自动转 HTTP
-    python toolbox.py --http     # 强制 HTTP 模式（浏览器打开）
-    python toolbox.py --port 8799
+    python tools/toolbox.py            # 优先桌面窗口，不行则自动转 HTTP
+    python tools/toolbox.py --http     # 强制 HTTP 模式（浏览器打开）
+    python tools/toolbox.py --port 8799
 """
 import argparse
 import json
@@ -29,31 +33,31 @@ from pathlib import Path
 import urllib.parse
 import http.server
 
-# toolbox.py 位于仓库根的 tools/ 目录下；tools.json / toolbox.html 与它同目录
-HERE = Path(__file__).resolve().parent          # .../web-launcher/tools
-ROOT = HERE.parent                               # .../web-launcher（仓库根）
+# toolbox.py 位于仓库根的 tools/ 目录下；tools.json / toolbox.html 与它同目录。
+# 仓库根 = tools/ 的上一级，与脚本放哪、从哪个目录运行无关。
+HERE = Path(__file__).resolve().parent          # .../<repo>/tools
+ROOT = HERE.parent                               # .../<repo>（本仓库根）
 TOOLS_FILE = HERE / "tools.json"
 HTML_FILE = HERE / "toolbox.html"
 
 # ---------------------------------------------------------------------------
-# 加载清单，解析各仓库根目录（相对 toolbox.py 所在仓库根）
+# 加载清单（本仓库自用）：记录仓库名，并标出脚本缺失的工具
 # ---------------------------------------------------------------------------
 def load_manifest():
     data = json.loads(TOOLS_FILE.read_text(encoding="utf-8"))
-    repos = data.get("repos", {})
-    repo_dirs = {}
+    data["_repo_name"] = ROOT.name
     missing = []
-    for name, rel in repos.items():
-        d = (ROOT / rel).resolve()   # 仓库路径相对仓库根解析（toolbox.py 在 tools/ 下）
-        repo_dirs[name] = d
-        if not d.is_dir():
-            missing.append(name)
-    data["_missing_repos"] = missing
+    for t in data.get("tools", []):
+        cmd = t.get("cmd") or []
+        target = (ROOT / cmd[0]) if cmd else None
+        if target is None or not target.exists():
+            missing.append(t.get("id"))
+    data["_missing_tools"] = missing
     tools = {t["id"]: t for t in data.get("tools", [])}
-    return data, repo_dirs, tools
+    return data, tools
 
 
-MANIFEST, REPO_DIRS, TOOLS_BY_ID = load_manifest()
+MANIFEST, TOOLS_BY_ID = load_manifest()
 
 
 def render_html():
@@ -68,19 +72,18 @@ def render_html():
 
 
 # ---------------------------------------------------------------------------
-# 核心：执行一个工具，并通过 emit(stream, text) 把输出流式回传
+# 核心：执行一个工具（在本仓库根目录下运行），通过 emit(stream, text) 流式回传
 # ---------------------------------------------------------------------------
 def run_tool_core(tool, args, emit):
     """运行 tool，逐行把输出交给 emit。返回 (returncode, ok)。"""
-    repo = tool.get("repo")
-    repo_dir = REPO_DIRS.get(repo)
-    if repo_dir is None or not repo_dir.is_dir():
-        emit("system", "✗ 仓库目录不存在，无法运行：%s" % repo)
-        return -1, False
-
     cmd = list(tool.get("cmd", []))
     if not cmd:
         emit("system", "✗ 工具未定义 cmd")
+        return -1, False
+
+    target = ROOT / cmd[0]
+    if not target.exists():
+        emit("system", "✗ 脚本不存在: %s" % target)
         return -1, False
 
     if cmd[0].endswith(".bat"):
@@ -89,11 +92,11 @@ def run_tool_core(tool, args, emit):
         full = [sys.executable] + cmd
     full += [str(a) for a in (args or [])]
 
-    emit("system", "$ cd %s" % repo_dir)
+    emit("system", "$ cd %s" % ROOT)
     emit("system", "$ %s" % " ".join(full))
     try:
         p = subprocess.Popen(
-            full, cwd=str(repo_dir),
+            full, cwd=str(ROOT),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
         )
@@ -157,7 +160,7 @@ def start_gui():
     import webview
     html = render_html()
     webview.create_window(
-        MANIFEST.get("title", "WebLauncher 工具箱"),
+        MANIFEST.get("title", "工具箱"),
         html=html, js_api=Api(),
         width=1120, height=780, resizable=True, text_select=True,
     )
@@ -245,7 +248,7 @@ def start_http(port, open_browser=True):
 # 入口
 # ---------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="WebLauncher 统一工具箱")
+    ap = argparse.ArgumentParser(description="WebLauncher 工具箱（本仓库）")
     ap.add_argument("--http", action="store_true", help="强制 HTTP 模式（浏览器打开）")
     ap.add_argument("--port", type=int, default=8799, help="HTTP 模式监听端口")
     ap.add_argument("--no-browser", action="store_true", help="HTTP 模式不自动开浏览器")

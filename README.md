@@ -92,7 +92,7 @@
 
 **制作 runtime**：`python tools/make_runtime.py`（tools/ 目录脚本，Windows x64，基于官方 embeddable 包）+ `python tools/make_wheels.py`（自动扫描**本仓库**各 app.json 的 `deps` 字段下载依赖 wheels）。runtime/wheels 为二进制产物**不进 git**（`.gitignore` 已排除），但生成脚本已纳入 git——即使误删也能 `git checkout` 找回并重新生成。
 
-> **两个仓库各自独立重建**：`web-launcher/tools/bootstrap.bat` 只重建本仓库的 runtime + wheels；`web-launcher-apps/tools/bootstrap.bat` 只重建它自己的 wheels（runtime 属于 web-launcher，apps 仓库不含）。`make_wheels.py` 不再跨仓库扫描，两个仓库各扫各的。安装应用时，launcher 的 `deps_installer` 会同时查找本仓库与同级 `web-launcher-apps/wheels/<平台>/`，所以离线安装依然能找到 apps 仓库的依赖。
+> **两个仓库各自独立重建**：`web-launcher/tools/bootstrap.py` 只重建本仓库的 runtime + wheels；`web-launcher-apps/tools/bootstrap.py` 只重建它自己的 wheels（runtime 属于 web-launcher，apps 仓库不含）。`make_wheels.py` 不再跨仓库扫描，两个仓库各扫各的。安装应用时，launcher 的 `deps_installer` 会同时查找本仓库与同级 `web-launcher-apps/wheels/<平台>/`，所以离线安装依然能找到 apps 仓库的依赖。
 
 **runtime 升级**（如 3.11 → 3.13）：改 `tools/make_runtime.py` 的 `PY_VER` 重新生成 → 整目录替换部署机的 `runtime/win-x64/` → **重新发布所有 protect 应用**（`.pyc` 字节码绑定 Python 大版本）→ 重新分发。
 
@@ -142,10 +142,10 @@
 │    ├ publish.py       ← 发布到仓库（含 wheels 上传）│
 │    ├ make_runtime.py  ← 重建内嵌 Python runtime      │
 │    ├ make_wheels.py   ← 扫描**本仓库** app.json deps 下载 wheels│
-│    ├ bootstrap.bat    ← 一键重建**本仓库** runtime + wheels│
-│    ├ package.bat / kill.bat ← 打包 exe / 清理 python 进程│
-│    └ toolbox.py + tools.json + toolbox.html ← 统一工具箱本体│
-│  toolbox.bat          ← 工具箱根目录入口（双击即可）│
+│    ├ bootstrap.py     ← 一键重建**本仓库** runtime + wheels（跨平台）│
+│    ├ package.py / kill.py ← 打包可执行 / 清理进程（跨平台）│
+│    └ toolbox.py + tools.json + toolbox.html ← 本仓库工具箱本体│
+│  （工具箱入口：python tools/toolbox.py，跨平台）│
 │  ─────────────────────────────────────────────────  │
 │  • 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务面板）  │
 │  • 应用生命周期（spawn / port_probe / graceful stop）│
@@ -186,25 +186,26 @@ python launcher.py
 
 ### 部署到目标机
 
-1. `tools/package.bat` 打包 → `dist/launcher.exe`
-2. `python tools/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`（也可直接双击本仓库 `tools/bootstrap.bat` 一键生成 runtime + wheels；apps 仓库用它自己的 `tools/bootstrap.bat` 重建 wheels）
+1. `python tools/package.py` 打包 → `dist/launcher.exe`
+2. `python tools/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`（也可直接 `python tools/bootstrap.py` 一键生成本仓库 runtime + wheels；apps 仓库用它自己的 `tools/bootstrap.py` 重建 wheels）
 3. 携带 `config.json` + `apps/` 整目录分发
 
 目标机双击 launcher.exe 即可。解释器策略为"**带了就用，没带用系统的**"：目录里有 `runtime/` 则所有 Python 应用由它执行（目标机免装 Python）；漏拷不报错，自动回退目标机自己的 Python（要求 ≥ 3.8）。声明了 `deps` 的应用在商店安装时自动装依赖（完全离线的机器把 wheels 拷到 `wheels/win-x64/` 即可离线安装）。详见「应用运行时与依赖管理」一节。
 
-## 🧰 统一工具箱（toolbox）
+## 🧰 工具箱（toolbox）
 
-散落的开发 / 发布脚本（启动、打包、发布、重建 runtime/wheels、清理进程）现在统一收进一个带界面的入口，不用再记每个 `.bat` / `.py` 是干嘛的：
+本仓库的开发 / 发布脚本（启动、打包、发布、重建 runtime/wheels、清理进程）都收进一个带界面的入口，不用再记每个 `.py` 是干嘛的。全部脚本都是**跨平台 Python**（不用 .bat，Linux/macOS 一样能用）：
 
 ```bash
 python tools/toolbox.py          # 优先弹桌面窗口；无 GUI 环境时自动转浏览器
-# 或双击 toolbox.bat
 python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口）
 ```
 
-工具箱窗口按「运行 / 打包·构建 / 发布 / 重建产物 / 清理」分组，每个工具都有中文名称与说明，点「运行」即可执行并在界面里实时看输出。它同时收录了 **web-launcher** 与 **web-launcher-apps** 两个仓库的脚本。
+工具箱窗口按「运行 / 打包·构建 / 发布 / 重建产物 / 清理」分组，每个工具都有中文名称与说明，点「运行」即可执行并在界面里实时看输出。
 
-想增删工具或改说明，只编辑 `tools/tools.json`（每个条目含 `cmd`、所属 `repo`、分类 `category`、`desc` 说明，可选参数 `args`），无需动代码。所有工具脚本都收在 `tools/` 下，根目录只留 `launcher.py` 与 `toolbox.bat`（工具箱入口）。
+> **每个仓库各带一个工具箱，只管自己。** 本仓库的工具箱只列 web-launcher 的脚本；`web-launcher-apps` 有自己独立的工具箱（`web-launcher-apps/tools/`），两个仓库互不交叉管理。
+
+想增删工具或改说明，只编辑 `tools/tools.json`（每个条目含 `cmd`、分类 `category`、`desc` 说明，可选参数 `args`），无需动代码。所有工具脚本都是 `tools/` 下的 Python，根目录只留 `launcher.py`。
 
 ## 📋 app.json Schema
 

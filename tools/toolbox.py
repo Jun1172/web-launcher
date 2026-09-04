@@ -57,9 +57,14 @@ MANIFEST, REPO_DIRS, TOOLS_BY_ID = load_manifest()
 
 
 def render_html():
-    """读 HTML 模板，把工具清单注入占位符。"""
+    """读 HTML 模板，把工具清单注入占位符。
+
+    模板里是 `const TOOLS = /*__TOOLS__*/{};` —— `{}` 是「未注入时」的兜底。
+    因此必须把 `/*__TOOLS__*/{}`（连同大括号）整体替换成 JSON，
+    只替换占位符会残留 `{}`，变成 `…{json}{}` 导致 JS 语法错误。
+    """
     html = HTML_FILE.read_text(encoding="utf-8")
-    return html.replace("/*__TOOLS__*/", json.dumps(MANIFEST, ensure_ascii=False))
+    return html.replace("/*__TOOLS__*/{}", json.dumps(MANIFEST, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------

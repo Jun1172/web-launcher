@@ -1,55 +1,41 @@
 @echo off
-REM =====================================================================
-REM  WebLauncher（本仓库）一键重建脚本
-REM  用途：误删 runtime/ 或 wheels/ 后，重新生成这两个二进制产物目录。
-REM         本脚本只管 **web-launcher 仓库自身**，不碰 web-launcher-apps。
-REM         apps 仓库请到 ../web-launcher-apps 跑它自己的 bootstrap.bat。
-REM
-REM  前置条件：
-REM    1. 机器能联网（首次需下载 Python embeddable 包 + 依赖 wheels）
-REM    2. 命令行里有 python（任意版本，仅用于跑这两个生成脚本）
-REM
-REM  原理：
-REM    make_runtime.py  下载官方 embeddable Python -> runtime/win-x64/
-REM    make_wheels.py   扫描 **本仓库** 所有 app.json 的 deps -> wheels/<平台>/
-REM
-REM  这两个生成脚本都放在仓库根目录（不进 runtime/），因此即使
-REM  把 runtime/ 整个删掉，脚本也不会丢，且已被 git 追踪可随时 checkout。
-REM =====================================================================
 setlocal enabledelayedexpansion
+REM ---------------------------------------------------------------
+REM  web-launcher one-shot rebuild: regenerates runtime/ and wheels/.
+REM  Only rebuilds THIS repo (does NOT touch web-launcher-apps).
+REM  Needs network + a "python" on PATH (used only to run the two
+REM  generator scripts). runtime/ and wheels/ are git-ignored binary
+REM  outputs; the generator scripts live in tools/ and are tracked.
+REM ---------------------------------------------------------------
 cd /d "%~dp0"
 
 echo ============================================
-echo [1/2] 重建内嵌 Python runtime (runtime/win-x64)
+echo [1/2] Rebuild embedded Python runtime (runtime/win-x64)
 echo ============================================
 python make_runtime.py
 if errorlevel 1 (
     echo.
-    echo [错误] runtime 生成失败，请检查：
-    echo   - 网络是否可访问 https://www.python.org
-    echo   - 命令行 python 是否存在
+    echo [ERROR] runtime generation failed. Check network to python.org and that python exists.
     pause
     exit /b 1
 )
 
 echo.
 echo ============================================
-echo [2/2] 下载本仓库应用依赖 wheels (wheels/^<平台^>)
+echo [2/2] Download this repo's app dependency wheels (wheels/^<platform^>)
 echo ============================================
 python make_wheels.py
 if errorlevel 1 (
     echo.
-    echo [错误] wheels 下载失败，请检查：
-    echo   - 网络是否可访问 PyPI
-    echo   - 各依赖是否有对应平台的预编译 wheel
+    echo [ERROR] wheels download failed. Check PyPI access and that prebuilt wheels exist.
     pause
     exit /b 1
 )
 
 echo.
 echo ============================================
-echo 完成！本仓库的 runtime/ 与 wheels/ 已重建。
-echo （web-launcher-apps 的 wheels 请到它自己的 bootstrap.bat 重建）
+echo Done. This repo's runtime/ and wheels/ rebuilt.
+echo (For web-launcher-apps wheels, run its own tools\bootstrap.bat)
 echo ============================================
 pause
 endlocal

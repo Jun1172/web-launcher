@@ -78,12 +78,15 @@ def _write_windows_updater(current_exe: Path, new_exe: Path) -> Path:
     script = current_exe.parent / "updater.bat"
     current_name = current_exe.name
     # 获取当前进程 PID（通过 WMIC）
+    # 注意：cmd.exe 在中文系统按 GBK 解析批处理，.bat 里若混入非 ASCII
+    # 中文字符会被按字节切断、误当命令执行（OTA 时静默失败）。因此这里
+    # 的注释一律用英文，保证内容为纯 ASCII，任何代码页下都能正确解析。
     script_content = f"""@echo off
 setlocal
 set "TARGET={current_exe}"
 set "NEW={new_exe}"
 
-rem 等待当前进程退出（轮询检查）
+rem wait for the current process to exit (poll)
 :wait_loop
 tasklist /FI "IMAGENAME eq {current_name}" 2>NUL | find /I "{current_name}" >NUL
 if %ERRORLEVEL%==0 (
@@ -91,20 +94,20 @@ if %ERRORLEVEL%==0 (
     goto wait_loop
 )
 
-rem 等待文件系统释放
+rem wait for the filesystem to release the file
 timeout /t 2 /nobreak >NUL
 
-rem 替换旧版本
+rem replace the old version
 if exist "%TARGET%" del /f "%TARGET%"
 move /Y "%NEW%" "%TARGET%"
 
-rem 清理 updater 自身
+rem delete this updater script itself
 del /f "%~f0"
 
-rem 重启
+rem restart
 start "" "%TARGET%"
 """
-    script.write_text(script_content, encoding="utf-8")
+    script.write_text(script_content, encoding="utf-8", newline="\r\n")
     return script
 
 

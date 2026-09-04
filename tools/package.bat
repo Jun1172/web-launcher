@@ -1,14 +1,15 @@
 @echo off
 setlocal
 
-rem 本脚本位于 tools\，先切到仓库根目录，所有相对路径才成立。
+REM This script lives in tools\; switch to the repo root so all
+REM relative paths below resolve correctly.
 cd /d "%~dp0.."
 
-rem 旧版 launcher.exe 运行时会锁住 dist\launcher.exe，先结束它再覆盖构建产物。
+rem A running launcher.exe locks dist\launcher.exe; kill it before rebuilding.
 taskkill /F /IM launcher.exe >nul 2>&1
 if exist ".\dist\launcher.exe" del /F /Q ".\dist\launcher.exe" >nul 2>&1
 if exist ".\dist\launcher.exe" (
-    echo [ERROR] dist\launcher.exe 仍被占用，请关闭正在运行的 Launcher 后重试。
+    echo [ERROR] dist\launcher.exe is still in use; close the running Launcher and retry.
     exit /b 1
 )
 
@@ -24,13 +25,13 @@ pyinstaller -F -w -i .\doc\images\launcher.ico ^
     .\launcher.py
 
 if errorlevel 1 (
-    echo [ERROR] PyInstaller 打包失败。
+    echo [ERROR] PyInstaller packaging failed.
     exit /b 1
 )
 copy /Y ".\config.json" ".\dist\config.json" >nul
 if not exist ".\dist\config.json" (
-    echo [ERROR] 无法复制 config.json 到 dist 目录。
+    echo [ERROR] Could not copy config.json into dist.
     exit /b 1
 )
-echo [OK] 打包完成：dist\launcher.exe
+echo [OK] Packaged: dist\launcher.exe
 endlocal

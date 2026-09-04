@@ -9,10 +9,10 @@ import json
 import shutil
 import sys
 import urllib.request
-import zipfile 
+import zipfile
 from pathlib import Path
 from . import config
-from .config import BASE, APPS_DIR, vt
+from .config import BASE, APPS_DIR, safe_print, vt
 from .app_registry import reload_apps, derive_group, find_app
 from .process_manager import close_app
 from .deps_installer import install_app_deps
@@ -231,7 +231,6 @@ def do_launcher_update():
 
 def _update_frozen_release(release):
     """从 Gitee Release 下载 launcher.exe，并安排替换重启。"""
-    import hashlib
     try:
         req = urllib.request.Request(release["asset_url"], headers={"User-Agent": "WebLauncher"})
         with urllib.request.urlopen(req, timeout=60) as response:

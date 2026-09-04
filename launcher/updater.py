@@ -77,7 +77,6 @@ def _write_windows_updater(current_exe: Path, new_exe: Path) -> Path:
     """生成 Windows updater.bat：等待当前进程退出 → 替换 → 重启。"""
     script = current_exe.parent / "updater.bat"
     current_name = current_exe.name
-    new_name = new_exe.name
     # 获取当前进程 PID（通过 WMIC）
     script_content = f"""@echo off
 setlocal

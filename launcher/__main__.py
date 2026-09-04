@@ -192,7 +192,8 @@ def main():
 
     # 6. 有 pywebview → 创建桌面窗口
     url = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/"
-    window = webview.create_window(
+    # 句柄由 window_win32 通过 FindWindow 自行获取，此处无需保留返回值
+    webview.create_window(
         LAUNCHER_TITLE,
         url,
         width=1024,

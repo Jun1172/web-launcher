@@ -51,11 +51,9 @@ def _resolve_python():
             cmdline = winreg.QueryValueEx(k, "")[0]
         if cmdline.startswith('"'):
             end = cmdline.index('"', 1)
-            cand, rest = cmdline[1:end], cmdline[end + 1:]
+            cand = cmdline[1:end]
         else:
-            parts = cmdline.split(None, 1)
-            cand = parts[0]
-            rest = parts[1] if len(parts) > 1 else ""
+            cand = cmdline.split(None, 1)[0]
         cand = os.path.expandvars(cand.strip())
         if cand and os.path.isfile(cand):
             found = [cand] + (["-3"] if os.path.basename(cand).lower() == "py.exe" else [])

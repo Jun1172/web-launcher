@@ -110,7 +110,6 @@ def _strip_json_comments(text):
     注意：不处理字符串内部的 //（如 changelog 中的 URL），仅处理
     出现在引号外部的注释标记。实现用简单状态机扫描。
     """
-    import re
     out = []
     i, n = 0, len(text)
     in_str = False  # 是否在 "..." 字符串内

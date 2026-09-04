@@ -90,7 +90,7 @@
 - **启动**（`launcher/process_manager.py`）：应用有 `site/` 时自动注入 `PYTHONPATH`
 - **源码保护**（`protect: true`）：发布时 `.py` 编译为 `.pyc`，包内不含源码；入口是几行的 runpy 启动器
 
-**制作 runtime**：`python runtime/make_runtime.py`（Windows x64，基于官方 embeddable 包）。runtime/wheels 为二进制产物，**不进 git**（`.gitignore` 已排除），随时可重建。
+**制作 runtime**：`python make_runtime.py`（仓库根目录脚本，Windows x64，基于官方 embeddable 包）+ `python make_wheels.py`（自动扫描各 app.json 的 `deps` 字段下载依赖 wheels）。runtime/wheels 为二进制产物**不进 git**（`.gitignore` 已排除），但两个生成脚本已纳入 git——即使误删也能 `git checkout` 找回并重新生成。一键重建：`bootstrap.bat`。
 
 **runtime 升级**（如 3.11 → 3.13）：改 `make_runtime.py` 的 `PY_VER` 重新生成 → 整目录替换部署机的 `runtime/win-x64/` → **重新发布所有 protect 应用**（`.pyc` 字节码绑定 Python 大版本）→ 重新分发。
 
@@ -137,7 +137,9 @@
 │    ├ __main__.py        ← 进程入口（HTTP+pywebview）│
 │    └ templates/         ← 布局/主题模板（4+3）      │
 │  publish.py             ← 发布到仓库（含 wheels 上传）│
-│  runtime/make_runtime.py ← 重建内嵌 Python runtime  │
+│  make_runtime.py      ← 重建内嵌 Python runtime（根目录）│
+│  make_wheels.py       ← 扫描 app.json deps 下载 wheels（根目录）│
+│  bootstrap.bat        ← 一键重建 runtime + wheels   │
 │  ─────────────────────────────────────────────────  │
 │  • 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务面板）  │
 │  • 应用生命周期（spawn / port_probe / graceful stop）│
@@ -179,7 +181,7 @@ python launcher.py
 ### 部署到目标机
 
 1. `package.bat` 打包 → `dist/launcher.exe`
-2. `python runtime/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`
+2. `python make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`（也可直接双击 `bootstrap.bat` 一键生成 runtime + wheels）
 3. 携带 `config.json` + `apps/` 整目录分发
 
 目标机双击 launcher.exe 即可。解释器策略为"**带了就用，没带用系统的**"：目录里有 `runtime/` 则所有 Python 应用由它执行（目标机免装 Python）；漏拷不报错，自动回退目标机自己的 Python（要求 ≥ 3.8）。声明了 `deps` 的应用在商店安装时自动装依赖（完全离线的机器把 wheels 拷到 `wheels/win-x64/` 即可离线安装）。详见「应用运行时与依赖管理」一节。
@@ -398,7 +400,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 - [ ] **status 多状态字段**（starting/restarting/crashed/stopped）—— 当前只有 running: bool
 - [ ] **独立更新工具 launcher_updater.py**（外部触发的 check/update，当前未实现）
 - [ ] **publish.py --binary** 多平台打包
-- [ ] Linux runtime（make_runtime.py 目前仅 Windows x64；Linux 用 portable Python 或静态链接发行包）
+- [ ] Linux runtime（make_runtime.py 目前仅 Windows x64；Linux 用 portable Python 或静态链接发行包；注意 make_wheels.py 已支持 linux-x64/linux-arm64 跨平台下载）
 - [ ] 应用间 IPC 总线（发现 + 调用）
 - [ ] 应用资源限制（CPU / 内存配额）
 - [ ] 日志收集与轮转

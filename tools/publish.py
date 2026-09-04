@@ -30,7 +30,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-BASE = Path(__file__).parent.resolve()
+# 本脚本位于 tools/ 目录下，仓库根目录为其上一级
+BASE = Path(__file__).resolve().parent.parent
 CONFIG_JSON = BASE / "config.json"
 APPS_DIR = BASE / "apps"
 

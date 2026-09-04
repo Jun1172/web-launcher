@@ -12,9 +12,10 @@ REM    toolbox.bat --port 8799   指定端口
 REM =====================================================================
 setlocal
 cd /d "%~dp0"
-pythonw toolbox.py %*
+REM 工具箱本体在 tools\toolbox.py；本 .bat 只是根目录的便捷入口
+pythonw tools\toolbox.py %*
 if errorlevel 1 (
-    echo [错误] 工具箱启动失败，请确认本目录有 pythonw 且 toolbox.py 存在。
+    echo [错误] 工具箱启动失败，请确认本目录有 pythonw 且 tools\toolbox.py 存在。
     pause
 )
 endlocal

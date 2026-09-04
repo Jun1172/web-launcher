@@ -113,13 +113,13 @@ python launcher.py
 
 ```bash
 # 单个发布
-python publish.py apps/user/<id>
+python tools/publish.py apps/user/<id>
 
 # 或随全部应用一起发布
-python publish.py --user
+python tools/publish.py --user
 
 # 按分组发布
-python publish.py --group business
+python tools/publish.py --group business
 ```
 
 ## 🔌 端口分配约定
@@ -216,7 +216,7 @@ ThreadingHTTPServer((HOST, PORT), H).serve_forever()
 
 ## 📦 打包结构
 
-`publish.py` 打包的 zip 顶层结构统一为 `apps/<group>/<id>/...`：
+`tools/publish.py` 打包的 zip 顶层结构统一为 `apps/<group>/<id>/...`：
 
 ```
 hello-1.0.0.zip

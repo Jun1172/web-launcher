@@ -29,9 +29,11 @@ from pathlib import Path
 import urllib.parse
 import http.server
 
-HERE = Path(__file__).resolve().parent
+# toolbox.py 位于仓库根的 tools/ 目录下；tools.json / toolbox.html 与它同目录
+HERE = Path(__file__).resolve().parent          # .../web-launcher/tools
+ROOT = HERE.parent                               # .../web-launcher（仓库根）
 TOOLS_FILE = HERE / "tools.json"
-HTML_FILE = HERE / "tools" / "toolbox.html"
+HTML_FILE = HERE / "toolbox.html"
 
 # ---------------------------------------------------------------------------
 # 加载清单，解析各仓库根目录（相对 toolbox.py 所在仓库根）
@@ -42,7 +44,7 @@ def load_manifest():
     repo_dirs = {}
     missing = []
     for name, rel in repos.items():
-        d = (HERE / rel).resolve()
+        d = (ROOT / rel).resolve()   # 仓库路径相对仓库根解析（toolbox.py 在 tools/ 下）
         repo_dirs[name] = d
         if not d.is_dir():
             missing.append(name)

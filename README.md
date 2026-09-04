@@ -85,16 +85,16 @@
 | 轻量试用 | 仅 exe + config.json | Python ≥ 3.8 |
 
 **依赖自动安装**（声明 `deps` 的应用全程零手动）：
-- **发布**（`publish.py`）：自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
+- **发布**（`tools/publish.py`）：自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
 - **安装**（`launcher/deps_installer.py`）：商店安装后自动装依赖到应用 `site/`，顺序为本地 wheels 离线装 → repo 内网源在线装 → 公网源（清华镜像）回退；已装检测，重装升级秒过
 - **启动**（`launcher/process_manager.py`）：应用有 `site/` 时自动注入 `PYTHONPATH`
 - **源码保护**（`protect: true`）：发布时 `.py` 编译为 `.pyc`，包内不含源码；入口是几行的 runpy 启动器
 
-**制作 runtime**：`python make_runtime.py`（仓库根目录脚本，Windows x64，基于官方 embeddable 包）+ `python make_wheels.py`（自动扫描**本仓库**各 app.json 的 `deps` 字段下载依赖 wheels）。runtime/wheels 为二进制产物**不进 git**（`.gitignore` 已排除），但生成脚本已纳入 git——即使误删也能 `git checkout` 找回并重新生成。
+**制作 runtime**：`python tools/make_runtime.py`（tools/ 目录脚本，Windows x64，基于官方 embeddable 包）+ `python tools/make_wheels.py`（自动扫描**本仓库**各 app.json 的 `deps` 字段下载依赖 wheels）。runtime/wheels 为二进制产物**不进 git**（`.gitignore` 已排除），但生成脚本已纳入 git——即使误删也能 `git checkout` 找回并重新生成。
 
-> **两个仓库各自独立重建**：`web-launcher/bootstrap.bat` 只重建本仓库的 runtime + wheels；`web-launcher-apps/bootstrap.bat` 只重建它自己的 wheels（runtime 属于 web-launcher，apps 仓库不含）。`make_wheels.py` 不再跨仓库扫描，两个仓库各扫各的。安装应用时，launcher 的 `deps_installer` 会同时查找本仓库与同级 `web-launcher-apps/wheels/<平台>/`，所以离线安装依然能找到 apps 仓库的依赖。
+> **两个仓库各自独立重建**：`web-launcher/tools/bootstrap.bat` 只重建本仓库的 runtime + wheels；`web-launcher-apps/tools/bootstrap.bat` 只重建它自己的 wheels（runtime 属于 web-launcher，apps 仓库不含）。`make_wheels.py` 不再跨仓库扫描，两个仓库各扫各的。安装应用时，launcher 的 `deps_installer` 会同时查找本仓库与同级 `web-launcher-apps/wheels/<平台>/`，所以离线安装依然能找到 apps 仓库的依赖。
 
-**runtime 升级**（如 3.11 → 3.13）：改 `make_runtime.py` 的 `PY_VER` 重新生成 → 整目录替换部署机的 `runtime/win-x64/` → **重新发布所有 protect 应用**（`.pyc` 字节码绑定 Python 大版本）→ 重新分发。
+**runtime 升级**（如 3.11 → 3.13）：改 `tools/make_runtime.py` 的 `PY_VER` 重新生成 → 整目录替换部署机的 `runtime/win-x64/` → **重新发布所有 protect 应用**（`.pyc` 字节码绑定 Python 大版本）→ 重新分发。
 
 ### 6. Launcher 自更新（双模式 OTA）
 - `/api/launcher/update` 触发 → `do_launcher_update` 用 `getattr(sys, "frozen", False)` 区分：
@@ -138,11 +138,14 @@
 │    ├ window_win32.py    ← Win32 无边框窗口/缩放控制 │
 │    ├ __main__.py        ← 进程入口（HTTP+pywebview）│
 │    └ templates/         ← 布局/主题模板（4+3）      │
-│  publish.py             ← 发布到仓库（含 wheels 上传）│
-│  make_runtime.py      ← 重建内嵌 Python runtime（根目录）│
-│  make_wheels.py       ← 扫描**本仓库** app.json deps 下载 wheels（根目录）│
-│  bootstrap.bat        ← 一键重建**本仓库** runtime + wheels（apps 仓库有各自版本）│
-│  toolbox.py / toolbox.bat ← 统一工具箱：窗口里管理以上所有脚本（含 apps 仓库）│
+│  tools/               ← 开发/维护工具（全部收进 tools/）│
+│    ├ publish.py       ← 发布到仓库（含 wheels 上传）│
+│    ├ make_runtime.py  ← 重建内嵌 Python runtime      │
+│    ├ make_wheels.py   ← 扫描**本仓库** app.json deps 下载 wheels│
+│    ├ bootstrap.bat    ← 一键重建**本仓库** runtime + wheels│
+│    ├ package.bat / kill.bat ← 打包 exe / 清理 python 进程│
+│    └ toolbox.py + tools.json + toolbox.html ← 统一工具箱本体│
+│  toolbox.bat          ← 工具箱根目录入口（双击即可）│
 │  ─────────────────────────────────────────────────  │
 │  • 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务面板）  │
 │  • 应用生命周期（spawn / port_probe / graceful stop）│
@@ -164,7 +167,7 @@
 │  apps/user/             │    └──────────────────────────┘
 │  apps/etws/  apps/ros/  │              ▲
 │  apps/game/ (外部仓库)  │ ─────────────┘
-│  app.json 递归扫描      │  publish.py --all / --launcher
+│  app.json 递归扫描      │  tools/publish.py --all / --launcher
 └─────────────────────────┘
 ```
 
@@ -183,8 +186,8 @@ python launcher.py
 
 ### 部署到目标机
 
-1. `package.bat` 打包 → `dist/launcher.exe`
-2. `python make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`（也可直接双击本仓库 `bootstrap.bat` 一键生成 runtime + wheels；apps 仓库用它自己的 `bootstrap.bat` 重建 wheels）
+1. `tools/package.bat` 打包 → `dist/launcher.exe`
+2. `python tools/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`（也可直接双击本仓库 `tools/bootstrap.bat` 一键生成 runtime + wheels；apps 仓库用它自己的 `tools/bootstrap.bat` 重建 wheels）
 3. 携带 `config.json` + `apps/` 整目录分发
 
 目标机双击 launcher.exe 即可。解释器策略为"**带了就用，没带用系统的**"：目录里有 `runtime/` 则所有 Python 应用由它执行（目标机免装 Python）；漏拷不报错，自动回退目标机自己的 Python（要求 ≥ 3.8）。声明了 `deps` 的应用在商店安装时自动装依赖（完全离线的机器把 wheels 拷到 `wheels/win-x64/` 即可离线安装）。详见「应用运行时与依赖管理」一节。
@@ -194,14 +197,14 @@ python launcher.py
 散落的开发 / 发布脚本（启动、打包、发布、重建 runtime/wheels、清理进程）现在统一收进一个带界面的入口，不用再记每个 `.bat` / `.py` 是干嘛的：
 
 ```bash
-python toolbox.py          # 优先弹桌面窗口；无 GUI 环境时自动转浏览器
+python tools/toolbox.py          # 优先弹桌面窗口；无 GUI 环境时自动转浏览器
 # 或双击 toolbox.bat
-python toolbox.py --http   # 强制浏览器模式（--port 可改端口）
+python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口）
 ```
 
 工具箱窗口按「运行 / 打包·构建 / 发布 / 重建产物 / 清理」分组，每个工具都有中文名称与说明，点「运行」即可执行并在界面里实时看输出。它同时收录了 **web-launcher** 与 **web-launcher-apps** 两个仓库的脚本。
 
-想增删工具或改说明，只编辑根目录的 `tools.json`（每个条目含 `cmd`、所属 `repo`、分类 `category`、`desc` 说明，可选参数 `args`），无需动代码。
+想增删工具或改说明，只编辑 `tools/tools.json`（每个条目含 `cmd`、所属 `repo`、分类 `category`、`desc` 说明，可选参数 `args`），无需动代码。所有工具脚本都收在 `tools/` 下，根目录只留 `launcher.py` 与 `toolbox.bat`（工具箱入口）。
 
 ## 📋 app.json Schema
 
@@ -274,23 +277,23 @@ python toolbox.py --http   # 强制浏览器模式（--port 可改端口）
 
 ```bash
 # 列出所有可发布的应用
-python publish.py --list
+python tools/publish.py --list
 
 # 发布单个应用
-python publish.py apps/user/hello
+python tools/publish.py apps/user/hello
 
 # 一键发布所有应用
-python publish.py --all
+python tools/publish.py --all
 
 # 只发系统应用 / 用户应用
-python publish.py --system
-python publish.py --user
+python tools/publish.py --system
+python tools/publish.py --user
 
 # 发布指定分组
-python publish.py --group business
+python tools/publish.py --group business
 
 # 只打包不上传（测试）
-python publish.py apps/user/hello --dry-run
+python tools/publish.py apps/user/hello --dry-run
 ```
 
 app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并上传到 repo `/wheels/<平台>/`；声明 `protect: true` 的应用以 `.pyc` 出包（不含源码）。
@@ -314,7 +317,7 @@ app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并�
 ```bash
 # 1. 修改 config.json 的 launcher.version（如 1.0.3）
 # 2. 发布
-python publish.py --launcher --changelog "修复 X，新增 Y"
+python tools/publish.py --launcher --changelog "修复 X，新增 Y"
 ```
 
 通过 `GET /api/launcher/version` 查看本地/远端版本对比，`GET /api/launcher/update` 触发 OTA 更新。

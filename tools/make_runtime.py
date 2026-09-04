@@ -6,12 +6,13 @@
 外加 pip (通过 get-pip.py 装入)，供 deps_installer 给应用装依赖。
 
 用法:
-    python make_runtime.py
+    python tools/make_runtime.py      # 在仓库根目录下运行（工具箱里点「重建」也可）
 
 说明:
-    本脚本放在仓库根目录，**不放在 runtime/ 内** —— 因为 runtime/ 被
+    本脚本放在 tools/ 目录，**不放在 runtime/ 内** —— 因为 runtime/ 被
     .gitignore 排除，放在里面会导致"删除 runtime 目录 = 连生成脚本一起删"，
-    且 git 无法恢复。
+    且 git 无法恢复。脚本通过自身位置向上定位仓库根（tools/ 的上一级），
+    把 runtime 生成到仓库根的 runtime/win-x64/，与脚本放哪、从哪运行无关。
 """
 import io
 import os
@@ -21,9 +22,10 @@ import sys
 import urllib.request
 import zipfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# 本脚本位于 tools/ 目录下，仓库根目录为其上一级
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 产物目录：runtime/win-x64（runtime 本身是二进制产物，不进 git）
-OUT = os.path.join(HERE, 'runtime', 'win-x64')
+OUT = os.path.join(ROOT, 'runtime', 'win-x64')
 
 PY_VER = '3.11.9'
 EMBED_URL = ('https://www.python.org/ftp/python/%s/'

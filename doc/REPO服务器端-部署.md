@@ -82,7 +82,7 @@ curl -k -O https://1.15.30.237/packages/test-0.1.0.zip
 ssh-keygen -t ed25519
 ssh-copy-id 用户@1.15.30.237
 ```
-然后 publish.py 里 SERVER="用户@1.15.30.237"、REMOTE="/var/www/repo"，每次 python publish.py apps/ocr 即完成上架。
+然后 tools/publish.py 里 SERVER="用户@1.15.30.237"、REMOTE="/var/www/repo"，每次 python tools/publish.py apps/ocr 即完成上架。
 
 ## 客户端对接：launcher.py 顶部
 ```

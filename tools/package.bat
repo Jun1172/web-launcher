@@ -1,6 +1,9 @@
 @echo off
 setlocal
 
+rem 本脚本位于 tools\，先切到仓库根目录，所有相对路径才成立。
+cd /d "%~dp0.."
+
 rem 旧版 launcher.exe 运行时会锁住 dist\launcher.exe，先结束它再覆盖构建产物。
 taskkill /F /IM launcher.exe >nul 2>&1
 if exist ".\dist\launcher.exe" del /F /Q ".\dist\launcher.exe" >nul 2>&1

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebLauncher 工具箱</title>
+<style>
+  :root {
+    --bg: #f4f6fb; --panel: #ffffff; --ink: #1f2733; --muted: #6b7785;
+    --line: #e6eaf1; --brand: #3b6ef5; --brand-d: #2f59c9;
+    --danger: #e0483b; --danger-bg: #fdeceb; --sys: #8a94a6;
+    --ok: #1f9d57; --shadow: 0 2px 10px rgba(20,30,60,.06), 0 1px 2px rgba(20,30,60,.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.9);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+    padding: 14px 22px; display: flex; align-items: center; gap: 14px;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  header .spacer { flex: 1; }
+  .chip {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px; font-weight: 600;
+    background: #eef2ff; color: var(--brand-d); border: 1px solid #dbe3ff;
+  }
+  .chip.http { background: #eafaf0; color: #1f7a45; border-color: #cdeed8; }
+  main { padding: 18px 22px 60px; max-width: 1180px; margin: 0 auto; }
+  section { margin-bottom: 26px; }
+  section h2 {
+    font-size: 14px; color: var(--muted); font-weight: 700; margin: 0 0 12px;
+    letter-spacing: .3px; display: flex; align-items: center; gap: 7px;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 15px 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
+  }
+  .card.danger { border-color: #f3c6c2; }
+  .chead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chead .name { font-weight: 700; font-size: 15px; }
+  .chead .repo {
+    font-size: 11px; color: var(--muted); background: #f0f2f7; border: 1px solid var(--line);
+    padding: 1px 8px; border-radius: 6px;
+  }
+  .badge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 6px; }
+  .badge.danger { color: #fff; background: var(--danger); }
+  .badge.missing { color: var(--danger); background: var(--danger-bg); border: 1px solid #f3c6c2; }
+  .desc { color: #45505f; font-size: 13px; }
+  .args { display: flex; flex-direction: column; gap: 7px; }
+  .arg { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .arg span { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; min-width: 96px; color: var(--brand-d); }
+  .arg input {
+    flex: 1; padding: 5px 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px;
+    background: #fbfcfe; color: var(--ink);
+  }
+  .arg input:focus { outline: none; border-color: var(--brand); }
+  .chk { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
+  .actions { display: flex; gap: 8px; margin-top: 2px; }
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 9px; padding: 7px 16px; font-weight: 600;
+    transition: filter .15s, background .15s;
+  }
+  button.run { background: var(--brand); color: #fff; }
+  button.run:hover { filter: brightness(1.05); }
+  button.run:disabled { background: #aab6d8; cursor: default; }
+  button.clear { background: #eef1f7; color: var(--muted); }
+  button.clear:hover { background: #e4e8f1; }
+  pre.out {
+    margin: 0; background: #0f1420; color: #d6e2f5; border-radius: 10px; padding: 11px 13px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px;
+    max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  pre.out .ln { padding: 1px 0; }
+  pre.out .err { color: #ff9a8f; }
+  pre.out .sys { color: #7fa7d8; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 20px; }
+  code { background: #eef1f7; padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title">WebLauncher 工具箱</h1>
+    <div class="sub" id="subtitle"></div>
+  </div>
+  <div class="spacer"></div>
+  <span class="chip" id="modeChip">…</span>
+</header>
+<main id="main"></main>
+<footer>
+  所有脚本来自各仓库根目录，运行目录即对应仓库。新增/修改工具请编辑 <code>tools.json</code>。
+</footer>
+
+<script>
+const TOOLS = /*__TOOLS__*/{};
+const byId = {};
+(TOOLS.tools || []).forEach(t => byId[t.id] = t);
+const missing = new Set(TOOLS._missing_repos || []);
+
+function setMode() {
+  const chip = document.getElementById('modeChip');
+  const gui = !!(window.pywebview && window.pywebview.api && window.pywebview.api.run_tool);
+  if (gui) { chip.textContent = '桌面窗口'; chip.classList.remove('http'); }
+  else { chip.textContent = '浏览器 / HTTP'; chip.classList.add('http'); }
+  document.getElementById('title').textContent = TOOLS.title || '工具箱';
+  document.getElementById('subtitle').textContent = TOOLS.subtitle || '';
+}
+
+function render() {
+  setMode();
+  const main = document.getElementById('main');
+  (TOOLS.categories || []).forEach(cat => {
+    const tools = (TOOLS.tools || []).filter(t => t.category === cat.id);
+    if (!tools.length) return;
+    const sec = document.createElement('section');
+    const h = document.createElement('h2');
+    h.textContent = (cat.icon || '') + ' ' + cat.name;
+    sec.appendChild(h);
+    const grid = document.createElement('div'); grid.className = 'grid';
+    tools.forEach(t => grid.appendChild(card(t)));
+    sec.appendChild(grid);
+    main.appendChild(sec);
+  });
+}
+
+function card(t) {
+  const el = document.createElement('div');
+  el.className = 'card' + (t.danger ? ' danger' : '');
+  el.id = 'card-' + t.id;
+
+  const isMissing = missing.has(t.repo);
+  let repoName = t.repo || '';
+  let argsHtml = '';
+  if (t.args && t.args.length && !isMissing) {
+    argsHtml = '<div class="args">';
+    t.args.forEach((a, i) => {
+      if (a.bool) {
+        argsHtml += '<label class="chk"><input type="checkbox" data-arg="' + i + '"> ' + esc(a.flag) + '</label>';
+      } else {
+        argsHtml += '<label class="arg"><span>' + esc(a.flag) + '</span>' +
+          '<input type="text" placeholder="' + esc(a.placeholder || '') + '" data-arg="' + i + '"></label>';
+      }
+    });
+    argsHtml += '</div>';
+  }
+
+  const badges = (t.danger ? '<span class="badge danger">危险</span>' : '') +
+    (isMissing ? '<span class="badge missing">仓库缺失</span>' : '');
+
+  el.innerHTML =
+    '<div class="chead"><span class="name">' + esc(t.name) + '</span>' +
+    '<span class="repo">' + esc(repoName) + '</span>' + badges + '</div>' +
+    '<div class="desc">' + esc(t.desc || '') + '</div>' +
+    argsHtml +
+    '<div class="actions">' +
+      '<button class="run" onclick="runTool(\'' + t.id + '\')"' + (isMissing ? ' disabled' : '') + '>运行</button>' +
+      '<button class="clear" onclick="clearOut(\'' + t.id + '\')">清空输出</button>' +
+    '</div>' +
+    '<pre class="out" id="out-' + t.id + '" style="display:none"></pre>' +
+    (isMissing ? '<div class="hint">该工具指向的仓库目录不存在，无法运行。</div>' : '');
+  return el;
+}
+
+function collectArgs(t) {
+  const out = [];
+  if (!t.args) return out;
+  t.args.forEach((a, i) => {
+    const node = document.querySelector('#card-' + cssEsc(t.id) + ' [data-arg="' + i + '"]');
+    if (!node) return;
+    if (a.bool) { if (node.checked) out.push(a.flag); }
+    else { const v = (node.value || '').trim(); if (v) { out.push(a.flag); out.push(v); } }
+  });
+  return out;
+}
+
+window.TB = {
+  appendLine(id, stream, text) {
+    const pre = document.getElementById('out-' + id);
+    if (!pre) return;
+    pre.style.display = 'block';
+    const line = document.createElement('div');
+    line.className = 'ln ' + (stream === 'stderr' ? 'err' : (stream === 'system' ? 'sys' : ''));
+    line.textContent = text;
+    pre.appendChild(line);
+    pre.scrollTop = pre.scrollHeight;
+  },
+  setRunning(id) {
+    const pre = document.getElementById('out-' + id);
+    if (pre) { pre.style.display = 'block'; pre.innerHTML = ''; }
+    const btn = document.querySelector('#card-' + cssEsc(id) + ' .run');
+    if (btn) { btn.disabled = true; btn.textContent = '运行中…'; }
+  },
+  setDone(id, ok, rc) {
+    const btn = document.querySelector('#card-' + cssEsc(id) + ' .run');
+    if (btn) { btn.disabled = false; btn.textContent = '运行'; }
+  }
+};
+
+async function runTool(id) {
+  const t = byId[id];
+  if (!t) return;
+  if (t.danger && !confirm('该操作较危险：\n\n' + (t.desc || '') + '\n\n确定要继续吗？')) return;
+  const args = collectArgs(t);
+  window.TB.setRunning(id);
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.run_tool) {
+    await window.pywebview.api.run_tool(id, args);
+  } else {
+    await httpRun(id, args);
+  }
+}
+
+async function httpRun(id, args) {
+  const qs = new URLSearchParams({ tool: id, args: JSON.stringify(args) });
+  const es = new EventSource('/api/run?' + qs.toString());
+  es.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.done) { window.TB.appendLine(id, 'system', '=== 结束 (rc=' + d.rc + ') ==='); window.TB.setDone(id, d.ok, d.rc); es.close(); }
+      else { window.TB.appendLine(id, d.stream, d.text); }
+    } catch (_) {}
+  };
+  es.onerror = () => { window.TB.appendLine(id, 'system', '[连接中断]'); window.TB.setDone(id, false, -1); es.close(); };
+}
+
+function clearOut(id) {
+  const pre = document.getElementById('out-' + id);
+  if (pre) pre.innerHTML = '';
+}
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/"/g, '\\"'); }
+
+document.addEventListener('DOMContentLoaded', render);
+</script>
+</body>
+</html>

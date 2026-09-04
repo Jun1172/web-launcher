@@ -1,0 +1,141 @@
+{
+  "title": "WebLauncher 工具箱",
+  "subtitle": "统一管理 web-launcher / web-launcher-apps 的开发与发布脚本",
+  "repos": {
+    "web-launcher": ".",
+    "web-launcher-apps": "../web-launcher-apps"
+  },
+  "categories": [
+    { "id": "run",     "name": "运行",   "icon": "▶️" },
+    { "id": "build",   "name": "打包 / 构建", "icon": "📦" },
+    { "id": "publish", "name": "发布",   "icon": "🚀" },
+    { "id": "rebuild", "name": "重建产物", "icon": "🔧" },
+    { "id": "clean",   "name": "清理",   "icon": "🧹" }
+  ],
+  "tools": [
+    {
+      "id": "wl.run",
+      "name": "启动 Launcher（开发模式）",
+      "repo": "web-launcher",
+      "category": "run",
+      "cmd": ["launcher.py"],
+      "desc": "以开发模式启动桌面窗口（pywebview）。等价于 python launcher.py。用于本地调试 launcher 与各应用。",
+      "danger": false
+    },
+    {
+      "id": "wl.package",
+      "name": "打包 Launcher 为 exe",
+      "repo": "web-launcher",
+      "category": "build",
+      "cmd": ["package.bat"],
+      "desc": "用 PyInstaller 把 launcher.py 打包成 dist/launcher.exe（先结束占用进程再覆盖）。需要本机已安装 PyInstaller。",
+      "danger": false
+    },
+    {
+      "id": "wl.publish.all",
+      "name": "发布全部应用",
+      "repo": "web-launcher",
+      "category": "publish",
+      "cmd": ["publish.py", "--all"],
+      "desc": "打包并上传本仓库内所有应用（系统 / 用户 / etws / ros 等分组）到 repo 服务器，并刷新 index.json。会连接远端服务器。",
+      "danger": false
+    },
+    {
+      "id": "wl.publish.launcher",
+      "name": "发布 Launcher 更新",
+      "repo": "web-launcher",
+      "category": "publish",
+      "cmd": ["publish.py", "--launcher"],
+      "desc": "打包并发布 launcher 主程序更新（需先在 config.json 改 launcher.version）。建议填写更新说明。",
+      "args": [
+        { "flag": "--changelog", "placeholder": "本次更新说明", "optional": true }
+      ],
+      "danger": false
+    },
+    {
+      "id": "wl.publish.sync",
+      "name": "同步 index.json（清理失效条目）",
+      "repo": "web-launcher",
+      "category": "publish",
+      "cmd": ["publish.py", "--sync"],
+      "desc": "对照远端 packages/ 实际文件，清理 index.json 中指向失效包的条目。建议先用 --dry-run 预览。",
+      "args": [
+        { "flag": "--dry-run", "bool": true, "optional": true }
+      ],
+      "danger": false
+    },
+    {
+      "id": "wl.make.runtime",
+      "name": "重建内嵌 runtime",
+      "repo": "web-launcher",
+      "category": "rebuild",
+      "cmd": ["make_runtime.py"],
+      "desc": "下载官方 embeddable Python 3.11，生成 runtime/win-x64/（含 pip）。误删 runtime 后用来恢复。需联网。",
+      "danger": false
+    },
+    {
+      "id": "wl.make.wheels",
+      "name": "重建 wheels（本仓库）",
+      "repo": "web-launcher",
+      "category": "rebuild",
+      "cmd": ["make_wheels.py"],
+      "desc": "扫描本仓库各 app.json 的 deps，下载依赖 wheels 到 wheels/win-x64/，供离线安装。需联网 + pip。",
+      "args": [
+        { "flag": "--platform", "placeholder": "win-x64 / linux-x64 / linux-arm64", "optional": true }
+      ],
+      "danger": false
+    },
+    {
+      "id": "wl.kill",
+      "name": "结束所有 python 进程",
+      "repo": "web-launcher",
+      "category": "clean",
+      "cmd": ["kill.bat"],
+      "desc": "强制结束本机所有 python.exe 进程（taskkill /F）。调试卡死或端口被占时用来清场。会杀掉全部 Python 程序，慎用。",
+      "danger": true
+    },
+
+    {
+      "id": "wa.publish.all",
+      "name": "发布全部应用（apps 仓库）",
+      "repo": "web-launcher-apps",
+      "category": "publish",
+      "cmd": ["publish.py", "--all"],
+      "desc": "打包并上传 web-launcher-apps 仓库内所有应用（game / ros / etws / general 等）到 repo 服务器，并刷新 index.json。会连接远端服务器。",
+      "danger": false
+    },
+    {
+      "id": "wa.publish.launcher",
+      "name": "发布 Launcher + 二进制（apps 仓库）",
+      "repo": "web-launcher-apps",
+      "category": "publish",
+      "cmd": ["publish.py", "--launcher", "--build"],
+      "desc": "打包并发布 launcher 主程序，且用 PyInstaller 编译出二进制 exe 一并上传（需本机装 PyInstaller）。建议填写更新说明。",
+      "args": [
+        { "flag": "--changelog", "placeholder": "本次更新说明", "optional": true }
+      ],
+      "danger": false
+    },
+    {
+      "id": "wa.make.wheels",
+      "name": "重建 wheels（apps 仓库）",
+      "repo": "web-launcher-apps",
+      "category": "rebuild",
+      "cmd": ["make_wheels.py"],
+      "desc": "扫描本仓库各 app.json 的 deps，下载依赖 wheels 到本仓库 wheels/win-x64/。误删后用来恢复。需联网 + pip。",
+      "args": [
+        { "flag": "--platform", "placeholder": "win-x64 / linux-x64 / linux-arm64", "optional": true }
+      ],
+      "danger": false
+    },
+    {
+      "id": "wa.kill",
+      "name": "结束所有 python 进程",
+      "repo": "web-launcher-apps",
+      "category": "clean",
+      "cmd": ["kill.bat"],
+      "desc": "强制结束本机所有 python.exe 进程。调试卡死或端口被占时清场。会杀掉全部 Python 程序，慎用。",
+      "danger": true
+    }
+  ]
+}

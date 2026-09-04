@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""下载应用依赖 wheels，供离线部署使用。
+"""下载 **本仓库** 应用依赖 wheels，供离线部署使用。
 
 产出 wheels/<平台标签>/ 目录，launcher 的 deps_installer 在装应用时会优先
 从这里离线安装（pip install --no-index --find-links），无需联网。
 
-依赖清单**不写死在脚本里**，而是自动扫描两个仓库所有 app.json 的 deps 字段：
+依赖清单**不写死在脚本里**，而是自动扫描 **本仓库** 所有 app.json 的 deps 字段：
     web-launcher/apps/*/*/app.json
-    ../web-launcher-apps/apps/*/*/app.json   （存在时）
+
+（web-launcher-apps 仓库有自己独立的 make_wheels.py 与 bootstrap.bat，
+ 两个仓库各自重建自己的 wheels，互不越界。）
 
 用法:
     python make_wheels.py                  # 按当前平台下载
@@ -76,11 +78,8 @@ def detect_python_tag():
 
 
 def collect_deps():
-    """扫描两个仓库所有 app.json，汇总 deps 字段（去重、保序）。"""
+    """扫描 **本仓库** 所有 app.json，汇总 deps 字段（去重、保序）。"""
     roots = [HERE / "apps"]
-    sibling = HERE.parent / "web-launcher-apps" / "apps"
-    if sibling.is_dir():
-        roots.append(sibling)
 
     deps, sources = [], {}
     for root in roots:

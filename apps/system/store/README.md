@@ -1,5 +1,7 @@
 # 🛒 应用商店（store，系统应用）
 
+![界面预览](images/screenshot.png)
+
 Launcher 的内置应用商店，浏览远端仓库并安装 / 升级 / 卸载应用。
 
 ## 功能

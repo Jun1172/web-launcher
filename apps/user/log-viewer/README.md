@@ -1,5 +1,7 @@
 # 📜 实时日志查看器（log-viewer）
 
+![界面预览](images/screenshot.png)
+
 终端风格的实时日志查看器，基于 SSE（Server-Sent Events）推流，纯 Python 后端 + 原生 JS 前端，离线可用、跨平台。
 
 ## 功能

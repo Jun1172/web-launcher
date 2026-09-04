@@ -1,5 +1,7 @@
 # 📊 系统信息（sysinfo，系统应用）
 
+![界面预览](images/screenshot.png)
+
 实时显示 CPU / 内存 / 磁盘使用情况和版本信息。
 
 ## 功能

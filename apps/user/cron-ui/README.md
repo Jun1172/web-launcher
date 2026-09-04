@@ -1,5 +1,7 @@
 # ⏱️ 可视化定时任务（cron-ui）
 
+![界面预览](images/screenshot.png)
+
 一个内嵌式的可视化 Cron 定时任务管理应用，纯 Python + 内嵌 HTML 实现，无外部依赖、离线可用。
 
 ## 功能

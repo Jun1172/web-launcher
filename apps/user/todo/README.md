@@ -1,5 +1,7 @@
 # 📝 待办清单（todo，系统应用）
 
+![界面预览](images/screenshot.png)
+
 最简的待办列表 demo，验证系统应用链路。
 
 ## 功能

@@ -1,5 +1,7 @@
 # 🧮 科学计算器（calculator）
 
+![界面预览](images/screenshot.png)
+
 验证 Launcher 承载纯前端（无后端逻辑）应用的能力，以及双模式交互体验。
 
 ## 应用行为

@@ -146,6 +146,18 @@ python publish.py --group business
 | user | log-viewer（日志 demo） | 8151 |
 | user | cron-ui（定时任务 demo） | 8152 |
 | user | nixie-clock（数码管时钟） | 8168 |
+| game | snake（贪吃蛇） | 8173 |
+| game | flappy-bird（像素鸟） | 8174 |
+| game | sokoban（推箱子） | 8175 |
+| game | tetris（俄罗斯方块） | 8176 |
+| game | breakout（打砖块） | 8177 |
+| game | memory-match（记忆翻牌） | 8178 |
+| game | key-tester（按键测试） | 8179 |
+| game | life（生命游戏） | 8180 |
+| game | desktop-pet（电子宠物） | 8181 |
+| game | link-match（连连看） | 8182 |
+| game | cyber-wood-fish（电子木鱼） | 8183 |
+| game | coin-flip（抛硬币） | 8184 |
 | ros | ros2-monitor（ROS2 监控） | 8201 |
 | ros | ros2-topic-inspector（话题） | 8203 |
 | ros | ros2-service（服务） | 8204 |
@@ -154,7 +166,7 @@ python publish.py --group business
 | ros | ros2-graph（关系图） | 8207 |
 | ros | ros2-type-studio（类型/波形） | 8209 |
 
-端口段建议：system `8100-8199`、user `8100-8199`、etws `8110-8169`、ros `8201-8209`；**新应用从 8210 开始往上分配**，避免和现有应用冲突。
+端口段建议：system `8100-8109`、etws `8110-8169`、user `8120-8139`、general `8140-8159`、game `8173-8184`、ros `8201-8209`；**新应用从 8210 开始往上分配**，避免和现有应用冲突。
 
 ### get_port() 端口读取约定
 

@@ -1,5 +1,7 @@
 # 🌤️ 天气（weather）
 
+![界面预览](images/screenshot.png)
+
 天气 demo，验证多视图切换与 mock 数据驱动 UI 场景。
 
 ## 功能

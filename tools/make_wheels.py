@@ -7,9 +7,6 @@
 依赖清单**不写死在脚本里**，而是自动扫描 **本仓库** 所有 app.json 的 deps 字段：
     web-launcher/apps/*/*/app.json
 
-（web-launcher-apps 仓库有自己独立的 make_wheels.py 与 bootstrap.py，
- 两个仓库各自重建自己的 wheels，互不越界。）
-
 用法:
     python tools/make_wheels.py                  # 按当前平台下载（在仓库根目录运行）
     python tools/make_wheels.py --platform win-x64

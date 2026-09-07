@@ -7,6 +7,7 @@
   "changelog": "实时监控 demo：CPU/内存折线图、TOP 进程列表、网络流量。",
   "port": 8125,
   "cmd": ["apps/user/system-monitor/app.py"],
+  "deps": ["psutil"],
   "dock": false,
   "group": "user"
 }

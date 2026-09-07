@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""统一工具箱（**只管本仓库**，桌面窗口 / HTTP 双模式）
+"""统一工具箱（桌面窗口 / HTTP 双模式）
 
 把本仓库 tools/ 里的开发 / 发布脚本（运行、打包、发布、重建产物、清理）
 集中到一个带界面的入口：每个工具有中文名称与说明，点一下就能跑，
 并在界面里实时看到输出。
 
-每个仓库各自带一份本工具（tools/toolbox.py + tools.json + toolbox.html），
-**只管理自己仓库的脚本，互不交叉**。入口为 `python tools/toolbox.py`（跨平台，
-不用 .bat）。
+入口为 `python tools/toolbox.py`（跨平台，不用 .bat）。
 
 两种运行模式（自动选择）：
   - 桌面窗口：本机装了 pywebview + WebView2 时，弹出一个原生桌面窗口。

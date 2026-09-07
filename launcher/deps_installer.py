@@ -49,17 +49,8 @@ def _has_pip():
 
 
 def _wheel_dirs():
-    """本地 wheels 目录候选列表。
-
-    优先本仓库 wheels/；若同级存在 web-launcher-apps 仓库，则追加它的
-    wheels/ 作为离线回退源。两个仓库分离后，apps 仓库的依赖 wheels 单独
-    生成在自己目录下，开发/离线部署时仍能从这里找到。
-    """
-    dirs = [os.path.join(BASE, "wheels", PLATFORM_TAG)]
-    sibling = os.path.join(BASE, "..", "web-launcher-apps", "wheels", PLATFORM_TAG)
-    if os.path.isdir(sibling):
-        dirs.append(sibling)
-    return dirs
+    """本地 wheels 目录：仅本仓库 wheels/<平台标签>/。"""
+    return [os.path.join(BASE, "wheels", PLATFORM_TAG)]
 
 
 def _installed_ok(site_dir, deps):
@@ -109,7 +100,7 @@ def install_app_deps(app):
         return False, "无 pip 可用(缺少 runtime)"
 
     need = [str(d) for d in deps]
-    # 1) 本地 wheels 离线安装（依次尝试本仓库 / 同级 apps 仓库 wheels）
+    # 1) 本地 wheels 离线安装（本仓库 wheels/<平台>/）
     for wd in _wheel_dirs():
         if os.path.isdir(wd):
             ok, out = _run_pip(["install", "--no-index", "--find-links", wd,

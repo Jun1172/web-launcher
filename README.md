@@ -9,9 +9,8 @@
 
 - [Gitee：web-launcher](https://gitee.com/jun626/web-launcher)
 - [GitHub：web-launcher](https://github.com/Jun1172/web-launcher)
-- [GitHub：web-launcher-apps（应用仓库）](https://github.com/Jun1172/web-launcher-apps)
 
-`web-launcher` 提供运行时、桌面界面、应用商店和发布工具；`web-launcher-apps` 提供可由本项目加载和发布的公开游戏、通用工具、ROS2 工具及示例应用。
+`web-launcher` 提供运行时、桌面界面、应用商店和发布工具，可加载和发布任意符合 app.json 协议的应用。
 
 ## 🔧 系统应用演示
 ![Logo](doc/images/系统信息.png)
@@ -92,7 +91,7 @@
 
 **制作 runtime**：`python tools/make_runtime.py`（tools/ 目录脚本，Windows x64，基于官方 embeddable 包）+ `python tools/make_wheels.py`（自动扫描**本仓库**各 app.json 的 `deps` 字段下载依赖 wheels）。runtime/wheels 为二进制产物**不进 git**（`.gitignore` 已排除），但生成脚本已纳入 git——即使误删也能 `git checkout` 找回并重新生成。
 
-> **两个仓库各自独立重建**：`web-launcher/tools/bootstrap.py` 只重建本仓库的 runtime + wheels；`web-launcher-apps/tools/bootstrap.py` 只重建它自己的 wheels（runtime 属于 web-launcher，apps 仓库不含）。`make_wheels.py` 不再跨仓库扫描，两个仓库各扫各的。安装应用时，launcher 的 `deps_installer` 会同时查找本仓库与同级 `web-launcher-apps/wheels/<平台>/`，所以离线安装依然能找到 apps 仓库的依赖。
+一键重建可用 `python tools/bootstrap.py`（等价于依次执行 make_runtime + make_wheels）。安装应用时，launcher 的 `deps_installer` 在本仓库 `wheels/<平台>/` 查找离线依赖包。
 
 **runtime 升级**（如 3.11 → 3.13）：改 `tools/make_runtime.py` 的 `PY_VER` 重新生成 → 整目录替换部署机的 `runtime/win-x64/` → **重新发布所有 protect 应用**（`.pyc` 字节码绑定 Python 大版本）→ 重新分发。
 
@@ -202,8 +201,6 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 ```
 
 工具箱窗口按「运行 / 打包·构建 / 发布 / 重建产物 / 清理」分组，每个工具都有中文名称与说明，点「运行」即可执行并在界面里实时看输出。
-
-> **每个仓库各带一个工具箱，只管自己。** 本仓库的工具箱只列 web-launcher 的脚本；`web-launcher-apps` 有自己独立的工具箱（`web-launcher-apps/tools/`），两个仓库互不交叉管理。
 
 想增删工具或改说明，只编辑 `tools/tools.json`（每个条目含 `cmd`、分类 `category`、`desc` 说明，可选参数 `args`），无需动代码。所有工具脚本都是 `tools/` 下的 Python，根目录只留 `launcher.py`。
 

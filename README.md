@@ -84,7 +84,7 @@
 | 轻量试用 | 仅 exe + config.json | Python ≥ 3.8 |
 
 **依赖自动安装**（声明 `deps` 的应用全程零手动）：
-- **发布**（`tools/publish.py`）：自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
+- **发布**（`publish.py`）：自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
 - **安装**（`launcher/deps_installer.py`）：商店安装后自动装依赖到应用 `site/`，顺序为本地 wheels 离线装 → repo 内网源在线装 → 公网源（清华镜像）回退；已装检测，重装升级秒过
 - **启动**（`launcher/process_manager.py`）：应用有 `site/` 时自动注入 `PYTHONPATH`
 - **源码保护**（`protect: true`）：发布时 `.py` 编译为 `.pyc`，包内不含源码；入口是几行的 runpy 启动器
@@ -137,8 +137,8 @@
 │    ├ window_win32.py    ← Win32 无边框窗口/缩放控制 │
 │    ├ __main__.py        ← 进程入口（HTTP+pywebview）│
 │    └ templates/         ← 布局/主题模板（4+3）      │
+│  publish.py           ← 发布到仓库（根目录手动运行，含 wheels 上传）│
 │  tools/               ← 开发/维护工具（全部收进 tools/）│
-│    ├ publish.py       ← 发布到仓库（含 wheels 上传）│
 │    ├ make_runtime.py  ← 重建内嵌 Python runtime      │
 │    ├ make_wheels.py   ← 扫描**本仓库** app.json deps 下载 wheels│
 │    ├ bootstrap.py     ← 一键重建**本仓库** runtime + wheels（跨平台）│
@@ -166,7 +166,7 @@
 │  apps/user/             │    └──────────────────────────┘
 │  apps/etws/  apps/ros/  │              ▲
 │  apps/game/ (外部仓库)  │ ─────────────┘
-│  app.json 递归扫描      │  tools/publish.py --all / --launcher
+│  app.json 递归扫描      │  publish.py --all / --launcher
 └─────────────────────────┘
 ```
 
@@ -202,7 +202,7 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 
 工具箱窗口按「运行 / 打包·构建 / 发布 / 重建产物 / 清理」分组，每个工具都有中文名称与说明，点「运行」即可执行并在界面里实时看输出。
 
-想增删工具或改说明，只编辑 `tools/tools.json`（每个条目含 `cmd`、分类 `category`、`desc` 说明，可选参数 `args`），无需动代码。所有工具脚本都是 `tools/` 下的 Python，根目录只留 `launcher.py`。
+想增删工具或改说明，只编辑 `tools/tools.json`（每个条目含 `cmd`、分类 `category`、`desc` 说明，可选参数 `args`），无需动代码。所有工具脚本都是 `tools/` 下的 Python；根目录只留 `launcher.py`（产品入口）和 `publish.py`（发布手动运行，不进工具箱——发布需要输密码，不适合点按钮）。
 
 ## 📋 app.json Schema
 
@@ -275,23 +275,19 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 
 ```bash
 # 列出所有可发布的应用
-python tools/publish.py --list
+python publish.py --list
 
 # 发布单个应用
-python tools/publish.py apps/user/hello
+python publish.py apps/user/hello
 
 # 一键发布所有应用
-python tools/publish.py --all
-
-# 只发系统应用 / 用户应用
-python tools/publish.py --system
-python tools/publish.py --user
+python publish.py --all
 
 # 发布指定分组
-python tools/publish.py --group business
+python publish.py --group business
 
 # 只打包不上传（测试）
-python tools/publish.py apps/user/hello --dry-run
+python publish.py apps/user/hello --dry-run
 ```
 
 app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并上传到 repo `/wheels/<平台>/`；声明 `protect: true` 的应用以 `.pyc` 出包（不含源码）。
@@ -315,7 +311,7 @@ app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并�
 ```bash
 # 1. 修改 config.json 的 launcher.version（如 1.0.3）
 # 2. 发布
-python tools/publish.py --launcher --changelog "修复 X，新增 Y"
+python publish.py --launcher --changelog "修复 X，新增 Y"
 ```
 
 通过 `GET /api/launcher/version` 查看本地/远端版本对比，`GET /api/launcher/update` 触发 OTA 更新。

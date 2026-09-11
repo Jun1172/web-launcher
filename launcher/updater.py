@@ -15,29 +15,18 @@ import sys
 from pathlib import Path
 
 
-def get_exe_dir() -> Path:
-    """返回当前 launcher 可执行文件所在目录（PyInstaller 环境下 sys.frozen 为 True）。"""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).parent.parent
-
-
-def get_current_exe() -> Path:
-    """返回当前 launcher 可执行文件路径（打包后为 .exe，开发态为 python 解释器）。"""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable)
-    # 开发态：返回 launcher.py（由 python 解释器运行）
-    return Path(sys.argv[0]).resolve()
-
-
 def launch_self_update(new_exe: Path):
     """安排后台脚本替换当前 exe 并重启。new_exe 为已下载好的新二进制路径。
 
+    仅在打包态（frozen）可调用：开发态由 do_launcher_update 走 zip 覆盖分支，
+    不会到这里（防御性检查，避免误替换 python 解释器）。
     调用方应先下载好 launcher.new 再调用本函数（避免重复下载）。
     返回 (ok, msg)。
     """
-    exe_dir = get_exe_dir()
-    current_exe = get_current_exe()
+    if not getattr(sys, "frozen", False):
+        return False, "仅打包模式支持二进制自更新"
+    current_exe = Path(sys.executable)
+    exe_dir = current_exe.parent
 
     if not new_exe.exists():
         return False, f"新二进制不存在: {new_exe}"

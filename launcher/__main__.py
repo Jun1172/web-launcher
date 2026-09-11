@@ -79,13 +79,22 @@ class LauncherApi:
         """前端 ▢ 按钮：最大化/还原。Win32 由 window_win32 处理，其他平台用 webview。"""
         if window_win32.IS_WIN:
             window_win32.toggle_maximize()
-        else:
-            try:
-                import webview
-                for w in webview.windows:
+            return
+        try:
+            import webview
+            for w in webview.windows:
+                if hasattr(w, "maximize") and hasattr(w, "restore"):
+                    # pywebview ≥4：真正的最大化/还原（用私有标记记录当前状态）
+                    if getattr(w, "_wl_maximized", False):
+                        w.restore()
+                    else:
+                        w.maximize()
+                    w._wl_maximized = not getattr(w, "_wl_maximized", False)
+                else:
+                    # 老版本 pywebview 没有 maximize/restore，退化为全屏切换
                     w.toggle_fullscreen()
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     def close_window(self):
         """前端 ✕ 按钮调用此方法关闭窗口。"""
@@ -174,7 +183,16 @@ def main():
 
     safe_print(f"[READY] {LAUNCHER_TITLE} v{LAUNCHER_VERSION} 已就绪")
 
-    # 5. 无 pywebview → 纯 HTTP 模式（阻塞主线程，Ctrl+C 退出）
+    # 5. WebView2 预检: 未安装则桌面窗口必然空白, 静默转纯 HTTP 模式(不开窗口)。
+    #    必须放在"纯 HTTP 分支"之前：置 False 后由下面的分支统一接管，
+    #    否则会继续往下创建窗口（pywebview 缺 WebView2 时可能不抛异常只开白窗）。
+    if has_webview and not _webview2_available():
+        has_webview = False
+        safe_print("[WARN] 系统未安装 WebView2 Runtime, 桌面窗口不可用")
+        safe_print("       安装后可恢复桌面窗口: https://developer.microsoft.com/microsoft-edge/webview2/")
+        safe_print(f"[INFO] 已切换纯 HTTP 模式, 浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+
+    # 6. 无 pywebview / 无 WebView2 → 纯 HTTP 模式（阻塞主线程，Ctrl+C 退出）
     if not has_webview:
         try:
             server.serve_forever()
@@ -183,14 +201,7 @@ def main():
             terminate_all()
         return
 
-    # 5.5 WebView2 预检: 未安装则桌面窗口必然空白, 静默转纯 HTTP 模式(不开窗口)
-    if has_webview and not _webview2_available():
-        has_webview = False
-        safe_print("[WARN] 系统未安装 WebView2 Runtime, 桌面窗口不可用")
-        safe_print("       安装后可恢复桌面窗口: https://developer.microsoft.com/microsoft-edge/webview2/")
-        safe_print(f"[INFO] 已切换纯 HTTP 模式, 浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
-
-    # 6. 有 pywebview → 创建桌面窗口
+    # 7. 有 pywebview → 创建桌面窗口
     url = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/"
     # 句柄由 window_win32 通过 FindWindow 自行获取，此处无需保留返回值
     webview.create_window(
@@ -203,7 +214,7 @@ def main():
         js_api=LauncherApi(),
     )
 
-    # 7. GUI 启动后回调：去标题栏（Win32）
+    # 8. GUI 启动后回调：去标题栏（Win32）
     #    窗口控制按钮（—▢✕）、状态栏拖拽、边缘缩放热区已迁移到
     #    layouts/_shared.js 的 setupWinChrome()，由前端自注入，
     #    location.reload() 后不会丢失，无需在此 evaluate_js。
@@ -212,7 +223,7 @@ def main():
             return
         window_win32.ensure_borderless()
 
-    # 8. 启动 GUI 事件循环（阻塞，直到窗口关闭）
+    # 9. 启动 GUI 事件循环（阻塞，直到窗口关闭）
     window_win32.start_borderless_poller()  # 句柄一出现就去标题栏（仅本进程窗口）
     gui_ok = False
     try:
@@ -232,7 +243,7 @@ def main():
         terminate_all()
         return
 
-    # 9. 窗口关闭后清理
+    # 10. 窗口关闭后清理
     safe_print("[STOP] 窗口已关闭，正在清理所有应用进程...")
     server.shutdown()
     terminate_all()

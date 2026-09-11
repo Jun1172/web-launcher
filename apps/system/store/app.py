@@ -251,12 +251,33 @@ body {
 }
 .btnPri:hover { background: #ef4444; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(248, 113, 113, 0.3); }
 
-/* ── 全局 Loading ── */
+/* ── 全局 Loading（纯文字）/ 安装进度条（带 bar）── */
 .__busy {
     position: fixed; left: 50%; top: 24px; transform: translateX(-50%);
     padding: 10px 20px; background: var(--accent); color: #fff; border-radius: 12px;
     font-size: 13px; font-weight: 600; z-index: 9999;
     box-shadow: 0 8px 24px var(--accent-glow); animation: pop .3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.__busy.with-bar {
+    background: rgba(20, 25, 45, 0.92); border: 1px solid var(--glass-border);
+    border-radius: 14px; min-width: 320px; padding: 12px 16px;
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.__busy .b-label { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.__busy .b-pct { font-variant-numeric: tabular-nums; color: var(--accent); }
+.__busy .b-track {
+    height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1);
+    margin-top: 9px; overflow: hidden;
+}
+.__busy .b-fill {
+    height: 100%; width: 0%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), #a855f7);
+    transition: width 0.3s ease;
+}
+.__busy .b-stage {
+    font-size: 11.5px; font-weight: 400; color: var(--text-secondary);
+    margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 </style>
 </head>
@@ -345,15 +366,52 @@ function clUL(text){
 function fmtTime(s){if(!s) return '—'; return s.replace('T',' ').slice(0,16);}
 function fmtSize(n){if(!n) return ''; return n<1024?(n+' B'):(n/1024).toFixed(1)+' KB';}
 
-function setBusy(msg){
+function setBusy(msg, withBar){
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   if(document.getElementById('__busy')) return;
-  const label = document.createElement('div'); label.id = '__busy'; label.textContent = msg;
+  const label = document.createElement('div');
+  label.id = '__busy';            // id 供 getElementById 查找/移除
+  label.className = '__busy' + (withBar ? ' with-bar' : '');  // class 供 CSS 选择器匹配
+  if(withBar){
+    label.innerHTML = `<div class="b-label"><span id="__busyMsg"></span><span class="b-pct" id="__busyPct"></span></div>` +
+      `<div class="b-track"><div class="b-fill" id="__busyFill"></div></div>` +
+      `<div class="b-stage" id="__busyStage"></div>`;
+    label.querySelector('#__busyMsg').textContent = msg;
+  } else {
+    label.textContent = msg;
+  }
   document.body.appendChild(label);
+}
+function updateBusy(percent, stage){
+  const fill = document.getElementById('__busyFill');
+  if(fill) fill.style.width = percent + '%';
+  const pct = document.getElementById('__busyPct');
+  if(pct) pct.textContent = percent > 0 ? percent + '%' : '';
+  const st = document.getElementById('__busyStage');
+  if(st) st.textContent = stage || '';
 }
 function clearBusy(){
   document.querySelectorAll('button').forEach(b => b.disabled = false);
   document.getElementById('__busy')?.remove();
+}
+
+/* 安装/升级：发出请求后轮询进度，期间进度条实时更新 */
+async function installWithProgress(id, action){
+  setBusy(action === 'upgrade' ? '升级中' : '安装中', true);
+  const installReq = api('/api/install?id=' + encodeURIComponent(id));
+  const timer = setInterval(async () => {
+    try{
+      const p = await api('/api/install/progress?id=' + encodeURIComponent(id));
+      if(p && typeof p.percent === 'number') updateBusy(p.percent, p.stage);
+    }catch(_){/* 轮询失败不影响主流程 */}
+  }, 400);
+  try{
+    const r = await installReq;
+    if(r.ok) updateBusy(100, '完成');
+    return r;
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 function showConfirm(title, msg){
@@ -574,9 +632,8 @@ document.addEventListener('click', async (e) => {
   if(action === 'detail'){ openDetail(id); return; }
 
   if(action === 'install' || action === 'upgrade'){
-    setBusy(action === 'upgrade' ? '升级中：下载 + 校验 + 重启…' : '安装中：下载 + 校验 + 部署…');
     try{
-      const r = await api('/api/install?id=' + encodeURIComponent(id));
+      const r = await installWithProgress(id, action);
       clearBusy();
       if(r.ok){
         if(id === 'store' && action === 'upgrade'){

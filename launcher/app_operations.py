@@ -1,28 +1,59 @@
 """app_operations - 安装 / 卸载 / Launcher 自更新
 核心函数:
-do_install(aid):              安装（升级）应用到最新版本
+do_install(aid):              安装（升级）应用到最新版本（带进度上报）
 do_uninstall(aid):            卸载普通应用（受保护分组拒绝）
 get_launcher_version_info():  读取本地+远端 launcher 版本，比较是否可升级
 do_launcher_update():         下载远端 launcher zip → 校验 → bak → 覆盖
+get_progress(aid):            查询安装进度（供 /api/install/progress 轮询）
 """
 import json
 import shutil
 import sys
+import threading
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
 from . import config
-from .config import BASE, APPS_DIR, safe_print, vt
+from .config import BASE, APPS_DIR, safe_print, vt, atomic_write_bytes
 from .app_registry import reload_apps, derive_group, find_app
 from .process_manager import close_app
 from .deps_installer import install_app_deps
 from .repo import repo_get, repo_index
-from .zipio import atomic_extract_zip
+from .zipio import atomic_extract_zip, verify_sha256, find_unsafe_names
 
 # ━━━━━━━━━━━━━━━━━━━━━ 核心配置 ━━━━━━━━━━━━━━━━━━━━━
 # 定义哪些分组的应用是“受保护的”，不允许通过商店卸载
 # 未来如果有 admin、dev 等分组也不允许卸载，直接往这里加即可
 PROTECTED_GROUPS = {"system"}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━ 安装进度上报 ━━━━━━━━━━━━━━━━━━━━━
+# {aid: {"percent": int, "stage": str, "done": bool, "ok": bool|None, "msg": str}}
+# 商店前端在安装请求发出后轮询 /api/install/progress 拿这里的数据画进度条。
+_PROGRESS = {}
+_progress_lock = threading.Lock()
+
+
+def _report(aid, percent, stage, done=False, ok=None, msg=""):
+    """更新某应用的安装进度（安装开始时重置为 0）。"""
+    with _progress_lock:
+        _PROGRESS[aid] = {
+            "percent": max(0, min(100, int(percent))),
+            "stage": stage,
+            "done": done,
+            "ok": ok,
+            "msg": msg,
+        }
+
+
+def get_progress(aid):
+    """查询安装进度；从未安装过返回初始态。返回 dict 副本。"""
+    with _progress_lock:
+        p = _PROGRESS.get(aid)
+        if p is None:
+            return {"percent": 0, "stage": "未开始", "done": False, "ok": None, "msg": ""}
+        return dict(p)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━ 应用安装/更新 ━━━━━━━━━━━━━━━━━━━━━
@@ -56,38 +87,92 @@ def _resolve_pkg_meta(aid):
     }
     return True, meta, "ok"
 
-def do_install(aid):
-    """安装/升级应用到最新版本。"""
-    if not aid:
-        return False, "缺少 id"
-        
+def _fmt_mb(n):
+    """字节数 → 'x.x MB' 友好文本（进度条展示用）。"""
+    if n is None:
+        return "?"
+    return f"{n / 1048576:.1f} MB" if n >= 1048576 else f"{n / 1024:.0f} KB"
+
+
+def _download_with_progress(aid, pkg):
+    """流式下载安装包并上报进度（占整体 10%~75%），带实时速度。返回 bytes。"""
+    resp = repo_get(pkg)
+    total = None
+    try:
+        total = int(resp.headers.get("Content-Length") or 0) or None
+    except Exception:
+        pass
+    chunks, got = [], 0
+    start = time.monotonic()
+    while True:
+        buf = resp.read(65536)
+        if not buf:
+            break
+        chunks.append(buf)
+        got += len(buf)
+        elapsed = time.monotonic() - start
+        # 前 0.3s 不显示速度（太小不准），之后显示平均速度
+        speed = f" · {_fmt_mb(got / elapsed)}/s" if elapsed > 0.3 else ""
+        if total:
+            pct = 10 + int(got / total * 65)
+            _report(aid, pct, f"下载安装包 {_fmt_mb(got)} / {_fmt_mb(total)}{speed}")
+        else:
+            _report(aid, 40, f"下载安装包 {_fmt_mb(got)}{speed}")
+    return b"".join(chunks)
+
+
+def _do_install(aid):
+    """安装/升级实现（进度上报由 do_install 包装）。"""
+    _report(aid, 2, "解析仓库信息")
     ok, meta, msg = _resolve_pkg_meta(aid)
     if not ok:
         return False, msg
 
+    _report(aid, 8, "停止运行中的应用")
     close_app(aid)
     try:
-        data = repo_get(meta["pkg"]).read()
+        data = _download_with_progress(aid, meta["pkg"])
     except Exception as e:
         return False, f"下载失败: {e}"
 
+    _report(aid, 78, "校验并解压部署")
     # 核心改动：目标根目录变为 APPS_DIR / group
     dest_root = APPS_DIR / meta["group"]
     target_dir = dest_root / aid
-    
+
     ok, msg = atomic_extract_zip(data, target_dir, expected_sha256=meta["sha256"])
     if not ok:
         return False, msg
 
+    _report(aid, 86, "刷新应用列表")
     reload_apps()
     # 声明了 deps 的应用: 自动安装依赖到 <app>/site/
     app = find_app(aid)
     if app and app.get("deps"):
-        dok, dmsg = install_app_deps(app)
+        _report(aid, 90, "安装依赖")
+        dok, dmsg = install_app_deps(
+            app, progress_cb=lambda m: _report(aid, 92, f"安装依赖：{m}"))
         if not dok:
             safe_print(f"[WARN] {aid} 依赖安装失败: {dmsg}")
             return False, f"应用已安装但依赖安装失败: {dmsg}"
     return True, "ok"
+
+
+def do_install(aid):
+    """安装/升级应用到最新版本。全程向 _PROGRESS 上报进度（含失败原因）。"""
+    if not aid:
+        return False, "缺少 id"
+    _report(aid, 0, "准备安装")
+    try:
+        ok, msg = _do_install(aid)
+    except Exception as e:
+        ok, msg = False, f"安装异常: {e}"
+    if ok:
+        _report(aid, 100, "完成", done=True, ok=True)
+    else:
+        cur = get_progress(aid)["percent"]
+        _report(aid, cur, "失败", done=True, ok=False, msg=msg)
+    return ok, msg
 
 
 # ━━━━━━━━━━━━━━━━━━━━━ 卸载 ━━━━━━━━━━━━━━━━━━━━━
@@ -197,14 +282,6 @@ def _gitee_latest_release():
         "asset_url": asset["browser_download_url"],
     }
 
-def _atomic_overwrite_file(src_bytes: bytes, target: Path):
-    """直接覆盖 target 文件（不保留 .bak）。"""
-    tmp = target.with_suffix(target.suffix + ".tmp.new")
-    tmp.write_bytes(src_bytes)
-    if target.exists():
-        target.unlink()
-    shutil.move(str(tmp), str(target))
-
 def do_launcher_update():
     """下载远端 launcher 更新 → 校验 → 执行。
 
@@ -250,7 +327,6 @@ def _update_frozen_release(release):
 
 def _update_dev(meta):
     """开发态：下载 zip → 校验 → 覆盖源码 → 合并 config → reload。"""
-    import hashlib
     pkg = meta.get("pkg")
     if not pkg:
         return False, "远端无 launcher zip 包", False
@@ -260,8 +336,10 @@ def _update_dev(meta):
     except Exception as e:
         return False, f"下载失败: {e}", False
 
-    if sha and hashlib.sha256(data).hexdigest() != sha:
-        return False, "launcher 包 sha256 校验失败", False
+    if sha:
+        err = verify_sha256(data, sha)
+        if err:
+            return False, f"launcher 包 {err}", False
 
     tmp_root = BASE / ".launcher-update.tmp"
     if tmp_root.exists():
@@ -272,8 +350,7 @@ def _update_dev(meta):
 
     try:
         with zipfile.ZipFile(zip_tmp) as z:
-            bad = [n for n in z.namelist() if n.startswith("/") or ".." in n]
-            if bad:
+            if find_unsafe_names(z.namelist()):
                 return False, "launcher 包含非法路径", False
             z.extractall(tmp_root / "unzipped")
     except Exception as e:
@@ -285,7 +362,7 @@ def _update_dev(meta):
     lp = unzipped / "launcher.py"
     if lp.exists():
         try:
-            _atomic_overwrite_file(lp.read_bytes(), BASE / "launcher.py")
+            atomic_write_bytes(BASE / "launcher.py", lp.read_bytes())
         except Exception as e:
             return False, f"覆盖 launcher.py 失败: {e}", False
 
@@ -309,8 +386,9 @@ def _update_dev(meta):
             remote_cfg = json.loads(remote_cfg_p.read_text(encoding="utf-8"))
             merged = dict(local_cfg)
             merged["launcher"] = remote_cfg.get("launcher", local_cfg.get("launcher", {}))
-            new_bytes = json.dumps(merged, ensure_ascii=False, indent=2).encode("utf-8")
-            _atomic_overwrite_file(new_bytes, cfg_path)
+            atomic_write_bytes(
+                cfg_path, json.dumps(merged, ensure_ascii=False, indent=2).encode("utf-8")
+            )
         except Exception as e:
             return False, f"合并 config.json 失败: {e}", False
 
@@ -329,7 +407,6 @@ def _update_dev(meta):
                         shutil.rmtree(target, ignore_errors=True)
                     shutil.copytree(app_sub, target)
                 except Exception as e:
-                    from .config import safe_print
                     safe_print(f"[WARN] 更新应用 {app_sub.name} 失败: {e}")
 
     shutil.rmtree(tmp_root, ignore_errors=True)

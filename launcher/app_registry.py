@@ -1,9 +1,9 @@
 """app_registry - 应用扫描与注册表维护
 
 职责：
-- 递归扫描 apps/ 下所有含 app.json 的目录，生成应用清单（通过 metadata.system 标记类型）
+- 递归扫描 apps/ 下所有含 app.json 的目录，生成应用清单（group 字段判定分组）
 - 维护模块级全局变量 system_apps / user_apps / REGISTRY
-- 提供 reload_apps() / is_system_app() / is_user_app() / resolve_cmd() 等接口
+- 提供 reload_apps() / find_app() / resolve_cmd() / find_all_app_dirs() 等接口
 
 依赖 launcher.config 提供 APPS_DIR；不依赖进程/仓库模块。
 """
@@ -46,8 +46,8 @@ def resolve_cmd(meta, app_dir):
     return out
 
 
-def _find_all_app_dirs():
-    """扫描内置 system 与 exe 同级 apps 下的客户应用。"""
+def find_all_app_dirs():
+    """扫描内置 system 与 exe 同级 apps 下的客户应用目录（含 app.json 的目录）。"""
     dirs = []
     roots = [SYSTEM_APPS_DIR]
     if APPS_DIR != SYSTEM_APPS_DIR:
@@ -69,9 +69,12 @@ def _find_all_app_dirs():
 
 
 def _scan_all_apps():
-    """递归扫描 APPS_DIR 下所有 app.json，返回 [{meta with id, system, cmd resolved}, ...]。"""
+    """扫描全部应用目录的 app.json，返回 [{meta with id, group, system, cmd resolved}, ...]。
+
+    每次刷新只扫描一次磁盘；system/user 拆分由 reload_apps 在内存中完成。
+    """
     apps = []
-    for d in _find_all_app_dirs():
+    for d in find_all_app_dirs():
         try:
             meta = json.loads((d / "app.json").read_text(encoding="utf-8"))
         except (json.JSONDecodeError, KeyError) as e:
@@ -79,7 +82,7 @@ def _scan_all_apps():
             continue
         meta.setdefault("id", d.name)
         # group 为唯一判定来源；system 字段已废弃。system 标记从 group 派生，
-        # 仅供 load_system_apps / load_user_apps 内部筛选使用。
+        # 仅供 reload_apps 内部筛选使用。
         g = derive_group(meta)
         meta["group"] = g
         meta["system"] = (g == "system")
@@ -90,16 +93,6 @@ def _scan_all_apps():
         meta.setdefault("released", "")
         apps.append(meta)
     return apps
-
-
-def load_system_apps():
-    """扫描所有目录，筛选 system:true 的应用。"""
-    return [a for a in _scan_all_apps() if a.get("system")]
-
-
-def load_user_apps():
-    """扫描所有目录，筛选 system:false 的应用。"""
-    return [a for a in _scan_all_apps() if not a.get("system")]
 
 
 def rebuild_registry():
@@ -132,22 +125,16 @@ def _mark_port_conflicts(apps):
 def reload_apps():
     """重新扫描磁盘，刷新三个全局列表。启动时调用、安装/卸载后调用。
 
-    扫描完后调用 layout.apply_layout 覆盖 dock / 过滤 hidden
+    扫描一次 _scan_all_apps() 后按 system 标记拆分两个列表，
+    再调用 layout.apply_layout 覆盖 dock / 过滤 hidden
     （layout.json 是用户级覆盖层，app.json 的 dock 是出厂默认）。
     """
     global system_apps, user_apps
     from . import layout  # 延迟导入避免循环
-    system_apps = layout.apply_layout(load_system_apps())
-    user_apps = layout.apply_layout(load_user_apps())
+    apps = _scan_all_apps()
+    system_apps = layout.apply_layout([a for a in apps if a["system"]])
+    user_apps = layout.apply_layout([a for a in apps if not a["system"]])
     rebuild_registry()
-
-
-def is_system_app(aid):
-    return any(a["id"] == aid for a in system_apps)
-
-
-def is_user_app(aid):
-    return any(a["id"] == aid for a in user_apps)
 
 
 def find_app(aid):

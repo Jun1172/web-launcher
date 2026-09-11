@@ -79,6 +79,12 @@ async function openApp(a){
       iframe.src=j.url+(j.url.includes('?')?'&':'?')+'t='+Date.now();
       iframe.onload=()=>{ld.style.display='none';iframe.style.display='block';};
     }else{ld.style.display='none';iframe.style.display='block';}
+  }else if(!j.ok){
+    // 启动失败必须可见：否则窗口只剩空白，用户无从下手
+    ld.style.display='block';
+    ld.innerHTML='❌ '+esc(a.name)+' 启动失败<div style="font-size:12px;opacity:.65;margin-top:8px;white-space:pre-line;line-height:1.6">'
+      +esc(j.reason||'未知原因')+'</div>'
+      +'<div style="font-size:11px;opacity:.45;margin-top:10px">完整日志见应用目录 data/app-output.log</div>';
   }else{ ld.style.display='none'; }
   poll();}
 

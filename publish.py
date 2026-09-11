@@ -61,7 +61,7 @@ def is_excluded(rel, ex):
 # 复用 launcher 包的公共逻辑，避免重复实现
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
-from launcher.app_registry import _find_all_app_dirs, derive_group
+from launcher.app_registry import find_all_app_dirs, derive_group
 
 def load_config():
     if CONFIG_JSON.exists():
@@ -162,7 +162,7 @@ def discover_apps(kind="all"):
     kind: 'all' | 任意分组名 (如 'system', 'user', 'admin')
     通过 app.json 的 group 字段判断类型，兼容旧版 system 字段
     """
-    all_dirs = _find_all_app_dirs()
+    all_dirs = find_all_app_dirs()
     if kind == "all":
         return all_dirs
 
@@ -587,7 +587,7 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
 
     # 核心改动：打包所有 group=="system" 的应用
     system_files = []
-    for app_dir in _find_all_app_dirs():
+    for app_dir in find_all_app_dirs():
         try:
             meta = json.loads((app_dir / "app.json").read_text(encoding="utf-8"))
         except Exception:

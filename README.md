@@ -1,7 +1,7 @@
 # 🚀 Web Launcher — 轻量级多语言应用部署平台
 
 ![Logo](doc/images/桌面.png)
-一个用 Python 标准库写的应用运行时，支持部署 Python / C/C++ / Web 等多种类型的应用，提供应用商店、版本仓库与进程管理：启动 / 端口就绪探测 / 优雅停止 / 安装升级回退 / 自身 OTA。
+一个用 Python 标准库写的应用运行时，支持部署 Python / C/C++ / Web 等多种类型的应用，提供应用商店、版本仓库与进程管理：启动 / 端口就绪探测 / 进程树清理 / 原子安装升级 / 自身 OTA。
 
 适用场景：嵌入式主板、工控机、边缘设备、本地开发机——只要能跑 Python，就能用 launcher 管理任意语言写的应用。
 
@@ -29,13 +29,15 @@
 
 ### 1. 进程启动 + 端口就绪探测
 - launcher 用 `subprocess.Popen` 拉起应用进程；`.py`/`.pyc` 自动前缀解释器（**优先随身 runtime**，无 runtime 时回退注册表文件关联/PATH，见"应用运行时"一节）
-- 若 `app.json` 声明了 `port`，启动后用 `socket.create_connection` 轮询端口直到监听成功（默认 6s 超时）
-- 无 `port` 的进程型应用启动即视为就绪
+- 若 `app.json` 声明了 `port`，启动后用 `socket.create_connection` 轮询端口直到监听成功（默认 6s 超时，期间同步检测进程是否崩溃）
+- 无 `port` 的进程型应用启动后存活 0.5s 即视为就绪
 - 跨平台 Popen kwargs：Windows 隐藏控制台（`CREATE_NO_WINDOW`），POSIX 设新会话以便后续 `killpg`
+- 子进程环境自动注入 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` / `PYTHONUNBUFFERED=1`：中文 Windows（GBK 区域）下应用 print emoji/中文不会因 `UnicodeEncodeError` 启动即崩，且强杀时日志不丢行
+- 启动失败可见：`/api/open` 返回失败时，前端在应用窗口内直接展示失败原因（不再白屏），完整日志在应用目录 `data/app-output.log`
 
-### 2. 优雅停止 + 进程树清理
-- `/api/close?id=<aid>` 触发 `p.terminate()` → 等 2 秒 → 兜底 `taskkill /F /T /PID`（Win）/ `os.killpg`（POSIX）杀整棵进程树
-- launcher 退出时 `atexit` 钩子按上述流程顺序停所有子进程，避免 C/C++ 子进程成孤儿
+### 2. 进程树整体清理
+- `/api/close?id=<aid>` 直接 `taskkill /F /T /PID`（Win）/ `os.killpg` 发 SIGKILL（POSIX）杀整棵进程树——应用可能拉起一整条子进程链（shell → python → 原生节点），只 terminate 主进程会留下孤儿，因此不做"先礼后兵"，直接整树强杀
+- launcher 退出时 `atexit` 钩子按上述流程停所有子进程
 
 ### 3. 系统应用 / 用户应用分层 + 自定义分组
 - **系统应用**（`apps/system/`）：默认安装、接受更新、不可卸载（受保护分组 `"system"`）
@@ -48,6 +50,7 @@
 - `atomic_extract_zip`（在 `launcher/zipio.py`）：sha256 校验 → 写 tmp → 解压（防 zip 路径穿越）→ `shutil.move` 原子替换目标目录
 - 兼容 3 种 zip 结构：`apps/<group>/<id>/...` / `<id>/...` / 扁平文件列表
 - 安装 / 升级到最新版本
+- **安装进度上报**：下载按 Content-Length 流式计算百分比，解压 / 依赖安装分阶段上报；商店前端轮询 `/api/install/progress` 显示实时进度条
 
 ### 5. 多语言 cmd 解析
 - `.py` / `.pyw` / `.pyc`：自动前缀 Python 解释器（随身 runtime 优先，见"应用运行时"一节）
@@ -81,7 +84,7 @@
 |---|---|---|
 | 常规（推荐） | exe + runtime/ + config.json + apps/ | 无 |
 | 完全离线机器 | 上述 + wheels/win-x64/ | 无 |
-| 轻量试用 | 仅 exe + config.json | Python ≥ 3.8 |
+| 轻量试用 | 仅 exe + config.json | Python ≥ 3.10 |
 
 **依赖自动安装**（声明 `deps` 的应用全程零手动）：
 - **发布**（`publish.py`）：自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）
@@ -97,8 +100,8 @@
 
 ### 6. Launcher 自更新（双模式 OTA）
 - `/api/launcher/update` 触发 → `do_launcher_update` 用 `getattr(sys, "frozen", False)` 区分：
-  - **源码模式**：下载 `launcher-<ver>.zip` → 解压覆盖 `launcher.py` / `launcher/` 包 → 合并 `config.json` → reload
-  - **编译模式**：下载二进制 → 校验 sha256 → `updater.launch_self_update()` 后台 spawn `updater.bat`（Win）/ `updater.sh`（Linux）→ 主进程退出 → 脚本替换 exe → 自动重启
+  - **源码模式**：从 repo 下载 `launcher-<ver>.zip` → sha256 校验 + 路径穿越检查 → 覆盖 `launcher.py` / `launcher/` 包 → 合并 `config.json` → reload
+  - **编译模式**：从 Gitee Release 下载 exe → 校验 MZ 头 → `updater.launch_self_update()` 后台 spawn `updater.bat`（Win）/ `updater.sh`（Linux）→ 主进程退出 → 脚本替换 exe → 自动重启
 - `GET /api/launcher/version` 返回本地 + 远端版本对比（`upgradable`），`GET /api/launcher/update` 触发 OTA
 
 ### 7. 用户级布局覆盖（layout.json）
@@ -122,21 +125,21 @@
 │  Launcher (Python stdlib, http.server, port 8000)  │
 │  ─────────────────────────────────────────────────  │
 │  launcher.py            ← 薄壳入口                  │
-│  launcher/              ← 14 个功能模块             │
-│    ├ config.py          ← 配置加载/路径常量/工具函数 │
+│  launcher/              ← 14 个模块文件             │
+│    ├ config.py          ← 配置加载/路径常量/原子写  │
 │    ├ app_registry.py    ← 应用扫描/注册表/group推导  │
 │    ├ process_manager.py ← spawn/port_probe/close   │
-│    ├ app_operations.py  ← install/uninstall         │
+│    ├ app_operations.py  ← install/uninstall/OTA    │
 │    ├ deps_installer.py  ← 应用依赖自动安装(site/)   │
 │    ├ repo.py            ← 仓库索引/HTTP 客户端      │
-│    ├ zipio.py           ← 原子解压工具             │
+│    ├ zipio.py           ← zip 校验 + 原子解压      │
 │    ├ http_handler.py    ← 路由                      │
 │    ├ frontend.py        ← 首页 HTML 渲染             │
 │    ├ layout.py          ← 用户布局覆盖（layout.json）│
 │    ├ updater.py         ← 二进制 OTA 替换脚本       │
 │    ├ window_win32.py    ← Win32 无边框窗口/缩放控制 │
 │    ├ __main__.py        ← 进程入口（HTTP+pywebview）│
-│    └ templates/         ← 布局/主题模板（4+3）      │
+│    └ templates/         ← 布局/主题模板（4+4）      │
 │  publish.py           ← 发布到仓库（根目录手动运行，含 wheels 上传）│
 │  tools/               ← 开发/维护工具（全部收进 tools/）│
 │    ├ make_runtime.py  ← 重建内嵌 Python runtime      │
@@ -164,10 +167,9 @@
 │    store/  todo/  clock/│    │  packages/<id>-<ver>.zip │
 │    sysinfo/ settings/   │    │  launcher-<ver>.zip      │
 │  apps/user/             │    └──────────────────────────┘
-│  apps/etws/  apps/ros/  │              ▲
-│  apps/game/ (外部仓库)  │ ─────────────┘
-│  app.json 递归扫描      │  publish.py --all / --launcher
-└─────────────────────────┘
+│  apps/etws/ 等自定义分组 │              ▲
+│  app.json 递归扫描      │ ─────────────┘
+└─────────────────────────┘  publish.py --all / --launcher
 ```
 
 ## 🚀 快速开始
@@ -181,15 +183,15 @@ python launcher.py
 
 # 3. 点桌面图标打开任意应用，或点 🛒 应用商店安装新应用
 
-需要 Python ≥ 3.8，无第三方依赖（标准库足够）。
+需要 Python ≥ 3.10（源码用到 `X | None` 类型标注与 `Path.is_relative_to`），无第三方依赖（标准库足够；桌面窗口模式另需 pywebview）。
 
 ### 部署到目标机
 
 1. `python tools/package.py` 打包 → `dist/launcher.exe`
-2. `python tools/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`（也可直接 `python tools/bootstrap.py` 一键生成本仓库 runtime + wheels；apps 仓库用它自己的 `tools/bootstrap.py` 重建 wheels）
+2. `python tools/make_runtime.py` 生成 runtime，放到 exe 旁：`dist/runtime/win-x64/`（也可直接 `python tools/bootstrap.py` 一键生成本仓库 runtime + wheels）
 3. 携带 `config.json` + `apps/` 整目录分发
 
-目标机双击 launcher.exe 即可。解释器策略为"**带了就用，没带用系统的**"：目录里有 `runtime/` 则所有 Python 应用由它执行（目标机免装 Python）；漏拷不报错，自动回退目标机自己的 Python（要求 ≥ 3.8）。声明了 `deps` 的应用在商店安装时自动装依赖（完全离线的机器把 wheels 拷到 `wheels/win-x64/` 即可离线安装）。详见「应用运行时与依赖管理」一节。
+目标机双击 launcher.exe 即可。解释器策略为"**带了就用，没带用系统的**"：目录里有 `runtime/` 则所有 Python 应用由它执行（目标机免装 Python）；漏拷不报错，自动回退目标机自己的 Python（要求 ≥ 3.10）。声明了 `deps` 的应用在商店安装时自动装依赖（完全离线的机器把 wheels 拷到 `wheels/win-x64/` 即可离线安装）。详见「应用运行时与依赖管理」一节。
 
 ## 🧰 工具箱（toolbox）
 
@@ -253,15 +255,17 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 | 路径 | 方法 | 说明 |
 |------|------|------|
 | `/api/apps` | GET | 列出全部应用 + 运行状态（含 `running: bool` 与 `actual_port`） |
-| `/api/layout` | GET | 读取用户布局（dock / hidden；未保存过时 dock=null） |
+| `/api/layout` | GET | 读取用户布局（dock / hidden / theme / layout；未保存过时 dock=null） |
 | `/api/layout` | POST | 保存布局配置（原子写 layout.json + reload_apps） |
+| `/api/ui/config` | GET | 读取 UI 开关（窗口按钮 / 动效开关与分项，源自 config.json 的 `ui` 节） |
 | `/api/repo` | GET | 拉取远端仓库索引（含可升级标记） |
 | `/api/repo/config` | GET | 读取仓库 URL / BASIC 认证 / SSL 配置 |
 | `/api/repo/config` | POST | 保存仓库配置（原子写 config.json + reload） |
 | `/api/install?id=<aid>` | GET | 安装 / 升级应用到最新版本 |
+| `/api/install/progress?id=<aid>` | GET | 查询安装进度（`percent` / `stage` / `done` / `ok` / `msg`），商店轮询此接口画进度条 |
 | `/api/uninstall?id=<aid>` | GET | 卸载用户应用（受保护分组 system 拒绝） |
 | `/api/open?id=<aid>` | GET | 启动应用进程 + 返回 iframe URL |
-| `/api/close?id=<aid>` | GET | 关闭应用进程树（terminate → 2s → 强 kill） |
+| `/api/close?id=<aid>` | GET | 关闭应用进程树（taskkill /F/T 或 killpg 整树强杀） |
 | `/api/launcher/version` | GET | launcher 本地 + 远端版本对比（是否可升级） |
 | `/api/launcher/update` | GET | 触发 launcher 自更新流程 |
 
@@ -288,6 +292,9 @@ python publish.py --group business
 
 # 只打包不上传（测试）
 python publish.py apps/user/hello --dry-run
+
+# 对照远端 packages/ 清理 index.json 失效条目
+python publish.py --sync
 ```
 
 app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并上传到 repo `/wheels/<平台>/`；声明 `protect: true` 的应用以 `.pyc` 出包（不含源码）。
@@ -347,7 +354,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 | 🕰️ nixie-clock | 8168 | 拟真数码管时钟 |
 | 📝 todo | 8101 | 待办清单示例 |
 
-### etws / ros 分组（业务工具）
+### etws 分组（业务工具）
 
 | 分组 | 应用 | 端口 |
 |------|------|------|
@@ -356,13 +363,6 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 | etws | radar-viewer（雷达数据） | 8160 |
 | etws | channel-analyse（通道分析） | 8165 |
 | etws | iqcache-sync（IQ 缓存三端同步，deps: paramiko，protect） | 8210 |
-| ros | ros2-monitor（ROS2 监控） | 8201 |
-| ros | ros2-topic-inspector（话题） | 8203 |
-| ros | ros2-service（服务） | 8204 |
-| ros | ros2-param（参数） | 8205 |
-| ros | ros2-action（动作） | 8206 |
-| ros | ros2-graph（关系图） | 8207 |
-| ros | ros2-type-studio（类型/波形） | 8209 |
 
 ## 🌐 部署到嵌入式主板
 
@@ -394,7 +394,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 
 ### 已完成
 - [x] 进程启动 + TCP 端口就绪探测
-- [x] 优雅停止（terminate → 2s → 强 kill 进程树）+ atexit 回收
+- [x] 进程树整体清理（taskkill /F/T 或 killpg）+ atexit 回收
 - [x] 安装 / 卸载 + 原子解压 + sha256 校验
 - [x] 仓库索引 + BASIC 认证 + SSL 开关
 - [x] system/user 两级目录 + 受保护分组（system 不可卸载）
@@ -403,7 +403,7 @@ python publish.py --launcher --changelog "修复 X，新增 Y"
 - [x] 桌面 UI（毛玻璃 + 分页 + Dock + 最近任务 + 关于 + 商店详情弹窗）
 - [x] 用户级布局覆盖（layout.json：dock / hidden）
 - [x] cpp-hello demo（C++ 应用部署模板）
-- [x] 代码模块化（launcher/ 包 14 个功能模块）
+- [x] 代码模块化（launcher/ 包 14 个模块文件）
 - [x] 应用依赖管理（deps 声明 → wheels 仓库共享 → 应用级 site/ 隔离安装）
 - [x] 内嵌 Python runtime（目标机免装 Python，版本可控）
 - [x] 发布源码保护（protect: pyc + runpy 启动器）

@@ -79,14 +79,23 @@ def _run_pip(args, timeout=300):
     return r.returncode == 0, (r.stdout or "") + (r.stderr or "")
 
 
-def install_app_deps(app):
+def install_app_deps(app, progress_cb=None):
     """安装应用依赖到 <app_dir>/site/。返回 (ok, msg)。
 
     - 无 deps 字段: (True, "no-deps")
     - 已全部安装:   (True, "already")
     - 本地 wheels 完整: 离线装 (True, "offline")
     - 否则在线装: repo 源优先, 失败回退 pypi
+
+    progress_cb(msg)：每个尝试阶段回调一次（商店进度条展示用），可为 None。
     """
+    def _cb(msg):
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:
+                pass
+
     deps = app.get("deps")
     if not deps:
         return True, "no-deps"
@@ -94,6 +103,7 @@ def install_app_deps(app):
     if not app_dir:
         return False, "应用目录未知"
     site = os.path.join(app_dir, "site")
+    _cb("检查已装依赖")
     if _installed_ok(site, deps):
         return True, "already"
     if not _has_pip():
@@ -103,14 +113,16 @@ def install_app_deps(app):
     # 1) 本地 wheels 离线安装（本仓库 wheels/<平台>/）
     for wd in _wheel_dirs():
         if os.path.isdir(wd):
+            _cb(f"离线安装（本地 wheels，{len(need)} 个包）")
             ok, out = _run_pip(["install", "--no-index", "--find-links", wd,
                                 "--target", site, "--upgrade"] + need)
             if ok:
                 return True, "offline"
 
     # 2) 在线: repo 内网源 → 公网回退
-    idxs = [_py_index_url(), "https://pypi.tuna.tsinghua.edu.cn/simple"]
-    for idx in idxs:
+    idxs = [(_py_index_url(), "内网源"), ("https://pypi.tuna.tsinghua.edu.cn/simple", "公网镜像")]
+    for idx, label in idxs:
+        _cb(f"在线安装（{label}，{len(need)} 个包）")
         ok, out = _run_pip(["install", "--target", site, "--upgrade",
                             "--index-url", idx] + need, timeout=600)
         if ok:

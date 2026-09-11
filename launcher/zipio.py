@@ -1,16 +1,33 @@
-"""zipio - 原子解压工具
+"""zipio - zip 安全校验与原子解压工具
 
 职责：
+- verify_sha256(data, expected): sha256 校验，返回错误消息或 None
+- find_unsafe_names(names): zip 路径穿越检查（/ 开头、.. 穿越），返回非法条目
 - atomic_extract_zip(data_bytes, target_dir): 安全地把 zip 解压写入目标目录
     - 使用 tmp 目录 + shutil.move 原子替换流程
-    - 检查 zip 非法路径（/ 开头、.. 穿越）
-    - 兼容两种 zip 结构：顶层 <aid>/ 或直接扁平文件列表
+    - 兼容三种 zip 结构：apps/<group>/<aid>/ 前缀、<aid>/ 前缀、扁平文件列表
+
+verify_sha256 / find_unsafe_names 同时供 app_operations 的 launcher 自更新复用，
+避免"zip 安全检查"在两处各写一遍。
 """
 import hashlib
 import re
 import shutil
 import zipfile
 from pathlib import Path
+
+
+def verify_sha256(data_bytes, expected: str) -> str | None:
+    """校验 data_bytes 的 sha256；通过返回 None，失败返回错误消息。"""
+    actual = hashlib.sha256(data_bytes).hexdigest()
+    if actual != expected:
+        return f"sha256 校验失败: 期望 {expected[:12]}… 实际 {actual[:12]}…"
+    return None
+
+
+def find_unsafe_names(names) -> list:
+    """返回 zip 条目中的非法路径（绝对路径 / .. 穿越）；全部安全返回空列表。"""
+    return [n for n in names if n.startswith("/") or ".." in n]
 
 
 def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None = None):
@@ -33,9 +50,9 @@ def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None
     返回 (success: bool, msg: str) 形式方便上层使用。
     """
     if expected_sha256:
-        actual = hashlib.sha256(data_bytes).hexdigest()
-        if actual != expected_sha256:
-            return False, f"sha256 校验失败: 期望 {expected_sha256[:12]}… 实际 {actual[:12]}…"
+        err = verify_sha256(data_bytes, expected_sha256)
+        if err:
+            return False, err
 
     target_dir = Path(target_dir)
     target_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -48,8 +65,7 @@ def atomic_extract_zip(data_bytes, target_dir: Path, expected_sha256: str | None
         zip_tmp.write_bytes(data_bytes)
         with zipfile.ZipFile(zip_tmp) as z:
             all_names = z.namelist()
-            bad = [n for n in all_names if n.startswith("/") or ".." in n]
-            if bad:
+            if find_unsafe_names(all_names):
                 return False, "zip 包含非法路径"
             files = [n for n in all_names if not n.endswith("/")]
 

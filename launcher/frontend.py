@@ -1,18 +1,14 @@
-"""frontend - 首页 HTML 资源、关于模态、stub 应用占位页
+"""frontend - 首页 HTML 资源与 stub 应用占位页
 
 导出:
 - render_home_html(title, version): 返回完整首页字符串
 - stub_html(app_meta): 返回无进程应用的占位页
 
-前端增强点（FR-4.1, FR-3.x）:
-- 状态栏右侧 🗂️ 布局编辑按钮 → 布局/配色切换模态
-- Toast 工具函数 showToast()
-- 最近任务卡片：上滑跟手 + 淡出动画、全部清除确认、关闭后 toast
-
 布局模板存放在 templates/layouts/<id>.html（_shared.js/_shared.css 为通用资源），
-通过占位符替换注入动态数据，避免本文件中出现 300+ 行的内联字符串
-（模块化维护性要求 FR-5.4）。
+主题存放在 templates/themes/<id>.html；通过占位符替换注入动态数据，
+避免本文件中出现大段内联字符串。
 """
+import json
 import sys
 from pathlib import Path
 
@@ -69,31 +65,20 @@ def _get_all_theme_blocks() -> str:
     return "\n".join(parts)
 
 
-def _get_theme() -> str:
-    """从 layout.json 读取用户选择的主题；非法或缺失回退 DEFAULT_THEME。"""
-    from . import layout
-    try:
-        ly = layout.load_layout()
-    except Exception:
-        return DEFAULT_THEME
+def _get_theme(ly: dict) -> str:
+    """从 layout.json 内容取用户选择的主题；非法或缺失回退 DEFAULT_THEME。"""
     t = ly.get("theme")
     return t if t in THEMES else DEFAULT_THEME
 
 
 def _themes_json() -> str:
     """生成前端 THEMES 常量的 JSON 字符串。"""
-    import json
     arr = [{"id": tid, "name": m["name"], "swatch": m["swatch"]} for tid, m in THEMES.items()]
     return json.dumps(arr, ensure_ascii=False)
 
 
-def _get_layout() -> str:
-    """从 layout.json 读取用户选择的布局；非法或缺失回退 DEFAULT_LAYOUT。"""
-    from . import layout
-    try:
-        ly = layout.load_layout()
-    except Exception:
-        return DEFAULT_LAYOUT
+def _get_layout(ly: dict) -> str:
+    """从 layout.json 内容取用户选择的布局；非法或缺失回退 DEFAULT_LAYOUT。"""
     l = ly.get("layout")
     return l if l in LAYOUTS else DEFAULT_LAYOUT
 
@@ -118,7 +103,6 @@ def _get_shared_js() -> str:
 
 def _layouts_json() -> str:
     """生成前端 LAYOUTS 常量的 JSON 字符串。"""
-    import json
     arr = [{"id": lid, "name": m["name"], "icon": m.get("icon", "")} for lid, m in LAYOUTS.items()]
     return json.dumps(arr, ensure_ascii=False)
 
@@ -143,9 +127,14 @@ justify-content:center;height:100vh;margin:0;background:linear-gradient(160deg,{
 
 def render_home_html(title, version):
     """构造桌面首页完整 HTML（按 layout.json 的 layout 字段选 layouts/<id>.html）。"""
+    from . import layout
+    try:
+        ly = layout.load_layout()  # 主题与布局共用一次读取
+    except Exception:
+        ly = {}
     esc_title = _escape(title)
     esc_ver = _escape(version)
-    layout_id = _get_layout()
+    layout_id = _get_layout(ly)
     tpl_path = _LAYOUTS_DIR / f"{layout_id}.html"
     try:
         tpl = tpl_path.read_text(encoding="utf-8")
@@ -160,6 +149,6 @@ def render_home_html(title, version):
             .replace("__SHARED_JS__", _get_shared_js())
             .replace("__THEME_BLOCKS__", _get_all_theme_blocks())
             # 再替换所有占位符（含共享资源里注入的）
-            .replace("__THEME__", _get_theme())
+            .replace("__THEME__", _get_theme(ly))
             .replace("__THEMES__", _themes_json())
             .replace("__LAYOUTS__", _layouts_json()))

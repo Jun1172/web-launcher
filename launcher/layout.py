@@ -10,7 +10,7 @@ app.json 的 dock 字段降级为"出厂默认值"，仅当 layout.json 未覆�
 """
 import json
 
-from .config import BASE
+from .config import BASE, atomic_write_bytes
 
 LAYOUT_JSON = BASE / "layout.json"
 
@@ -40,9 +40,9 @@ def save_layout(dock=None, hidden=None, theme=None, layout=None):
     if layout is not None:
         cur["layout"] = str(layout)
     cur["version"] = 1
-    tmp = LAYOUT_JSON.with_suffix(".json.tmp.new")
-    tmp.write_bytes(json.dumps(cur, ensure_ascii=False, indent=2).encode("utf-8"))
-    tmp.replace(LAYOUT_JSON)  # 同盘原子替换
+    atomic_write_bytes(
+        LAYOUT_JSON, json.dumps(cur, ensure_ascii=False, indent=2).encode("utf-8")
+    )
     return cur
 
 

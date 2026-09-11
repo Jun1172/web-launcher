@@ -5,6 +5,7 @@
   GET /api/apps                 → 已安装应用 + running 标记
   GET /api/repo                 → 仓库应用 + 本地版本/可升级对比
   GET /api/install?id=xxx       → 安装/升级到最新版本
+  GET /api/install/progress?id=xxx → 查询安装进度（商店进度条轮询）
   GET /api/uninstall?id=xxx     → 卸载用户应用
   GET /api/open?id=xxx          → 启动应用进程 + 返回 iframe URL
   GET /api/close?id=xxx         → 关闭应用进程树
@@ -25,7 +26,7 @@ from .config import vt
 from .app_registry import find_app
 from .process_manager import open_app as pm_open_app, get_port as pm_get_port, procs
 from .app_operations import (
-    do_install, do_uninstall,
+    do_install, do_uninstall, get_progress,
     get_launcher_version_info, do_launcher_update,
 )
 from .repo import repo_index
@@ -173,6 +174,13 @@ class Handler(BaseHTTPRequestHandler):
             aid = q.get("id", [None])[0]
             ok, msg = do_install(aid)
             self._json({"ok": ok, "msg": msg})
+            return
+
+        # ── 安装进度查询（商店进度条轮询）──
+        if path == "/api/install/progress":
+            aid = q.get("id", [None])[0]
+            self._json(get_progress(aid) if aid else
+                       {"percent": 0, "stage": "缺少 id", "done": True, "ok": False, "msg": "缺少 id"})
             return
 
         # ── 卸载 ──

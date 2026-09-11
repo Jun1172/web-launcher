@@ -5,7 +5,7 @@
 - 维护 actual_ports 全局字典 {app_id: 实际监听端口}
 - open_app(): 分配可用端口（优先 app.json 建议端口，被占则随机），
   通过环境变量 LAUNCHER_APP_PORT 传给 app，启动并等待就绪
-- close_app(): 优雅 terminate → 2 秒兜底 taskkill/killpg 进程树，避免孤儿进程
+- close_app(): 直接 taskkill /F /T（Win）/ killpg SIGKILL（POSIX）杀整棵进程树，避免孤儿进程
 - terminate_all(): Launcher atexit 钩子调用，或"全部清除"调用
 
 端口分配策略（launcher 主导，app 开发者不管冲突）：
@@ -20,6 +20,8 @@ import subprocess
 import sys
 import threading
 import time
+
+from .config import BASE as _LAUNCHER_ROOT
 
 procs = {}         # {app_id: subprocess.Popen}
 actual_ports = {}  # {app_id: 实际监听端口（int）}
@@ -130,7 +132,7 @@ def runtime_python():
     """
     if getattr(runtime_python, "_cache", None) is not None:
         return runtime_python._cache or None
-    root = _launcher_root()
+    root = str(_LAUNCHER_ROOT)  # 唯一的根目录来源：config.BASE
     cand = None
     if os.name == "nt":
         p = os.path.join(root, "runtime", "win-x64", "python.exe")
@@ -144,13 +146,6 @@ def runtime_python():
     return cand
 
 
-def _launcher_root():
-    """launcher 运行根目录：exe 旁的目录 / 源码的 launcher/ 上级。"""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
 def app_site_dir(app):
     """应用专属依赖目录 apps/<group>/<id>/site（存在才有）。"""
     d = app.get("_dir")  # app_scanner 注入的应用目录
@@ -161,8 +156,21 @@ def app_site_dir(app):
 
 
 def _app_env(app):
-    """构建子进程环境：LAUNCHER_APP_PORT + 应用 site/ 注入 PYTHONPATH。"""
+    """构建子进程环境：LAUNCHER_APP_PORT + 应用 site/ 注入 PYTHONPATH。
+
+    强制 UTF-8 stdio：launcher 会把应用 stdout/stderr 重定向到日志文件，
+    此时 Python ≤3.14 按系统区域设置选编码（中文 Windows = GBK），
+    应用 print emoji/特殊字符会直接 UnicodeEncodeError 崩溃（启动即死）。
+    PYTHONUTF8=1 让解释器整体走 UTF-8 模式，对应用代码零要求。
+
+    PYTHONUNBUFFERED=1：重定向到文件时 stdout 是块缓冲，进程被 taskkill
+    强杀时缓冲区内容会丢失（日志里看不到最后几行报错）；关掉缓冲保证
+    app-output.log 实时完整。
+    """
     env = os.environ.copy()
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUNBUFFERED", "1")
     site = app_site_dir(app)
     if site:
         pp = env.get("PYTHONPATH", "")

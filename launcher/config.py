@@ -48,7 +48,6 @@ DEFAULT_CONFIG = {
         "repo": "jun626/web-launcher",
         "release_asset": "launcher.exe",
     },
-    "publish": {},
 }
 
 
@@ -208,7 +207,6 @@ CONFIG = {}
 LAUNCHER_CFG = {}
 REPO_CFG = {}
 GITEE_CFG = {}
-PUBLISH_CFG = {}
 LAUNCHER_HOST = "127.0.0.1"
 LAUNCHER_PORT = 8000
 LAUNCHER_TITLE = "WebLauncher"
@@ -226,7 +224,7 @@ def reload_config():
 
     用于 launcher 自更新覆盖 config.json 后，使后续 API 读取到新版本号。
     """
-    global CONFIG, LAUNCHER_CFG, REPO_CFG, GITEE_CFG, PUBLISH_CFG
+    global CONFIG, LAUNCHER_CFG, REPO_CFG, GITEE_CFG
     global LAUNCHER_HOST, LAUNCHER_PORT, LAUNCHER_TITLE, LAUNCHER_VERSION
     global LAUNCHER_CHANGELOG, LAUNCHER_RELEASED
     global REPO_URL, REPO_AUTH, VERIFY_SSL, SSL_CTX
@@ -239,7 +237,6 @@ def reload_config():
     LAUNCHER_CFG = CONFIG.get("launcher", {})
     REPO_CFG = CONFIG.get("repo", {})
     GITEE_CFG = CONFIG.get("gitee", DEFAULT_CONFIG["gitee"])
-    PUBLISH_CFG = CONFIG.get("publish", {})
 
     LAUNCHER_HOST = LAUNCHER_CFG.get("host", "127.0.0.1")
     LAUNCHER_PORT = int(LAUNCHER_CFG.get("port", 8000))
@@ -262,6 +259,17 @@ def reload_config():
 reload_config()
 
 
+def atomic_write_bytes(path, data: bytes):
+    """原子写文件：写临时文件后同盘 replace，避免半截文件。
+
+    全 launcher 统一的文件落盘方式（config.json / layout.json / 自更新覆盖等）。
+    """
+    path = Path(path)
+    tmp = path.with_name(path.name + ".tmp.new")
+    tmp.write_bytes(data)
+    tmp.replace(path)  # 同盘原子替换
+
+
 def save_repo_config(url, auth_user, auth_pass, verify_ssl):
     """原子更新 config.json 的 repo 节，然后 reload_config()。
 
@@ -274,10 +282,9 @@ def save_repo_config(url, auth_user, auth_pass, verify_ssl):
         "auth": [auth_user, auth_pass] if auth_user else None,
         "verify_ssl": bool(verify_ssl),
     }
-    new_bytes = json.dumps(cfg, ensure_ascii=False, indent=2).encode("utf-8")
-    tmp = CONFIG_JSON.with_suffix(".json.tmp.new")
-    tmp.write_bytes(new_bytes)
-    tmp.replace(CONFIG_JSON)  # 同盘原子替换
+    atomic_write_bytes(
+        CONFIG_JSON, json.dumps(cfg, ensure_ascii=False, indent=2).encode("utf-8")
+    )
     reload_config()
 
 

@@ -49,7 +49,7 @@ __SHARED_CSS__
     border-radius:var(--tile-radius); font-size:26px;
     display:flex; align-items:center; justify-content:center;
     background:
-        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 42%, transparent) 0%, transparent 65%),
+        radial-gradient(circle at 30% 30%, rgba(var(--c-rgb,128,128,128),0.42) 0%, transparent 65%),
         linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--glass-border);
@@ -60,7 +60,7 @@ __SHARED_CSS__
 #appList .icon:hover .tile {
     transform: scale(1.08);
     border-color: var(--glass-border-hover);
-    box-shadow: var(--tile-shadow-hover), 0 0 22px color-mix(in srgb, var(--c) 25%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    box-shadow: var(--tile-shadow-hover), 0 0 22px rgba(var(--c-rgb,128,128,128),0.25), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 #appList .icon:hover .tile::before { left: 150%; }
 #appList .icon:active .tile { transform: scale(0.96); transition: transform 0.1s; }
@@ -117,7 +117,7 @@ __SHARED_CSS__
     position: relative;
     width:40px; height:40px; font-size:20px; border-radius:12px;
     background:
-        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 38%, transparent) 0%, transparent 65%),
+        radial-gradient(circle at 30% 30%, rgba(var(--c-rgb,128,128,128),0.38) 0%, transparent 65%),
         linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%);
     overflow: hidden;
 }
@@ -214,12 +214,14 @@ function buildHome(){
 }
 
 /* 构造列表行：方形图标 + 名称(大) + 状态描述(小,灰) */
+function hexRgb(h){h=(h||'').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');
+  const n=parseInt(h,16);return isNaN(n)?'128,128,128':((n>>16)&255)+','+((n>>8)&255)+','+(n&255);}
 function rowEl(a){
   const d=document.createElement('div');
   d.className='icon'; d.dataset.id=a.id;
   const tileCls=a.system?'tile system':'tile';
   d.innerHTML=
-    '<div class="'+tileCls+'" style="--c:'+a.color+'">'+a.icon+'</div>'+
+    '<div class="'+tileCls+'" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"">'+a.icon+'</div>'+
     '<div class="rowText">'+
       '<div class="name">'+esc(a.name)+'</div>'+
       '<div class="desc">'+descHtml(a)+'</div>'+
@@ -232,7 +234,7 @@ function dockEl(a){
   const d=document.createElement('div');
   d.className='icon'; d.dataset.id=a.id;
   const tileCls=a.system?'tile system':'tile';
-  d.innerHTML='<div class="'+tileCls+'" style="--c:'+a.color+'">'+a.icon+'</div>';
+  d.innerHTML='<div class="'+tileCls+'" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"">'+a.icon+'</div>';
   return d;
 }
 

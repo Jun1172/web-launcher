@@ -23,8 +23,54 @@ import time
 
 procs = {}         # {app_id: subprocess.Popen}
 actual_ports = {}  # {app_id: 实际监听端口（int）}
+log_handles = {}   # {app_id: 应用输出日志文件句柄}
 _lock = threading.Lock()   # 保护 procs / actual_ports 的短操作
 _starting = set()          # 正在启动中的 app_id，防止同一应用并发重复启动
+
+
+def _app_log_path(app):
+    """应用输出日志路径：<app>/data/app-output.log（data/ 不进发布包/不进 git）。"""
+    d = app.get("_dir")
+    if not d:
+        return None
+    logdir = os.path.join(d, "data")
+    os.makedirs(logdir, exist_ok=True)
+    return os.path.join(logdir, "app-output.log")
+
+
+def _open_log(app):
+    """打开应用输出日志（append；超过 256KB 截断保留末尾 128KB）。"""
+    path = _app_log_path(app)
+    if not path:
+        return None
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 256 * 1024:
+            with open(path, "rb") as f:
+                f.seek(-128 * 1024, os.SEEK_END)
+                tail = f.read()
+            with open(path, "wb") as f:
+                f.write(tail)
+        return open(path, "ab", buffering=0)
+    except OSError:
+        return None
+
+
+def _log_tail(app, limit=800):
+    """读应用输出日志末尾，用于启动失败时展示真实报错。"""
+    path = _app_log_path(app)
+    if not path or not os.path.exists(path):
+        return ""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - 4096))
+            data = f.read().decode("utf-8", "replace")
+        lines = [ln for ln in data.strip().splitlines() if ln.strip()]
+        tail = "\n".join(lines[-5:])
+        return tail[-limit:]
+    except OSError:
+        return ""
 
 
 def _resolve_python():
@@ -209,6 +255,27 @@ def open_app(app):
         _starting.add(aid)
 
     try:
+        kw = _popen_kwargs()
+        old_fh = log_handles.pop(aid, None)
+        if old_fh:
+            try:
+                old_fh.close()
+            except Exception:
+                pass
+        fh = _open_log(app)
+        if fh:
+            kw["stdout"] = fh
+            kw["stderr"] = fh
+            log_handles[aid] = fh
+        # Popen 本身可能失败（无 Python 解释器/runtime 缺失/权限），转成可读 reason
+        try:
+            launch_cmd = _prep_cmd(app["cmd"], app)
+        except Exception as e:
+            return {"ok": False, "running": False, "port": None,
+                    "reason": f"启动命令构造失败: {e}"}
+        if not launch_cmd:
+            return {"ok": False, "running": False, "port": None,
+                    "reason": "cmd 为空"}
         if bool(app.get("port")):
             # 有端口的应用：分配端口 → 传 env → 轮询端口就绪
             port = _alloc_port(app.get("port"))
@@ -216,32 +283,47 @@ def open_app(app):
 
             env = _app_env(app)
             env["LAUNCHER_APP_PORT"] = str(port)
-            p = subprocess.Popen(_prep_cmd(app["cmd"], app), env=env, **_popen_kwargs())
+            try:
+                p = subprocess.Popen(launch_cmd, env=env, **kw)
+            except OSError as e:
+                return {"ok": False, "running": False, "port": None,
+                        "reason": f"无法启动进程（解释器缺失或权限不足）: {e}\n命令: {launch_cmd[0]}"}
             procs[aid] = p
 
             # 轮询端口就绪，同时检查进程是否已崩溃
             end = time.time() + 6
             while time.time() < end:
                 if p.poll() is not None:
-                    return {"ok": False, "running": False, "port": None}  # 进程崩溃
+                    tail = _log_tail(app)
+                    return {"ok": False, "running": False, "port": None,
+                            "reason": "进程崩溃:\n" + tail if tail else "进程启动后立即退出"}  # 进程崩溃
                 try:
                     with socket.create_connection(("127.0.0.1", int(port)), timeout=0.3):
                         time.sleep(0.3)
                         if p.poll() is None:
                             return {"ok": True, "running": True, "port": port}
-                        return {"ok": False, "running": False, "port": None}  # 进程崩了
+                        tail = _log_tail(app)
+                        return {"ok": False, "running": False, "port": None,
+                                "reason": "进程崩溃:\n" + tail if tail else "进程启动后立即退出"}  # 进程崩了
                 except OSError:
                     time.sleep(0.1)
-            return {"ok": False, "running": False, "port": None}  # 超时
+            tail = _log_tail(app)
+            return {"ok": False, "running": False, "port": None,
+                    "reason": "端口就绪超时:\n" + tail if tail else "端口就绪超时"}  # 超时
         else:
             # 无端口的应用：启动进程，等待 0.5s 确认进程存活
-            p = subprocess.Popen(_prep_cmd(app["cmd"], app), env=_app_env(app),
-                                 **_popen_kwargs())
+            try:
+                p = subprocess.Popen(launch_cmd, env=_app_env(app), **kw)
+            except OSError as e:
+                return {"ok": False, "running": False, "port": None,
+                        "reason": f"无法启动进程（解释器缺失或权限不足）: {e}\n命令: {launch_cmd[0]}"}
             procs[aid] = p
             time.sleep(0.5)
             if p.poll() is None:
                 return {"ok": True, "running": True, "port": None}  # 进程存活
-            return {"ok": False, "running": False, "port": None}  # 进程已崩溃
+            tail = _log_tail(app)
+            return {"ok": False, "running": False, "port": None,
+                    "reason": "进程崩溃:\n" + tail if tail else "进程启动后立即退出"}  # 进程已崩溃
     finally:
         with _lock:
             _starting.discard(aid)
@@ -290,6 +372,12 @@ def close_app(aid):
         actual_ports.pop(aid, None)  # 清除端口映射
         p = procs.pop(aid, None)
         _starting.discard(aid)
+        fh = log_handles.pop(aid, None)
+    if fh:
+        try:
+            fh.close()
+        except Exception:
+            pass
     if p is None or p.poll() is not None:
         return
     root = p.pid

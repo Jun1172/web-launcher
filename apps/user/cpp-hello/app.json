@@ -1,12 +1,14 @@
 {
   "id": "cpp-hello",
   "name": "C++ Demo",
-  "icon": "🦾",
+  "icon": "💻",
   "color": "#e67e22",
   "version": "1.0.0",
-  "changelog": "验证 C++ 应用部署：原生 socket HTTP server，跨平台编译产物 + run.py 启动包装 + 子进程树清理。",
+  "changelog": "验证 C++ 应用部署：原生 socket HTTP server，跨平台编译产物 + run.py 启动包装 + 子进程树清理。（图标 🦾 在老 Win10 上缺字形显示为方框，换成 💻）",
   "port": 8124,
-  "cmd": ["apps/user/cpp-hello/run.py"],
+  "cmd": [
+    "apps/user/cpp-hello/run.py"
+  ],
   "dock": false,
   "group": "user"
 }

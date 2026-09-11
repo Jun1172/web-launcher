@@ -236,6 +236,28 @@ def _launcher_py(entry_name):
     ).format(entry_name)
 
 
+def _check_pyc_python_version():
+    """protect 出包的 .pyc 绑定 Python 大版本：校验当前解释器与内嵌 runtime 一致。
+    不一致时给出醒目警告（部署机 runtime 读不了会直接导致应用打不开）。"""
+    rt = BASE / "runtime" / "win-x64" / "python.exe"
+    cur = "%d.%d" % sys.version_info[:2]
+    if not rt.exists():
+        print(f"   ⚠ 未找到内嵌 runtime（{rt.relative_to(BASE)}），无法校验 pyc 版本；"
+              f"当前用 Python {cur} 编译，请确认与部署机 runtime 大版本一致")
+        return
+    try:
+        out = subprocess.run([str(rt), "-c",
+                              "import sys;print('%d.%d' % sys.version_info[:2])"],
+                             capture_output=True, text=True, timeout=30)
+        rt_ver = (out.stdout or "").strip()
+    except Exception:
+        return
+    if rt_ver and rt_ver != cur:
+        print(f"   ⚠⚠ pyc 版本不匹配：当前 Python {cur}，内嵌 runtime {rt_ver} —— "
+              f"打出的包在部署机上会打不开！请用 runtime 的 python 运行本脚本：")
+        print(f"      runtime\\win-x64\\python.exe publish.py ...")
+
+
 def build_pyc_stage(app_dir, meta=None):
     """把 app_dir 内容编译/复制到临时目录: .py -> 同位置 .pyc(源码不落副本),
     .html/.htm 压缩, 其余原样; 并对 cmd 指向的每个入口 .py 生成同名 runpy
@@ -245,6 +267,7 @@ def build_pyc_stage(app_dir, meta=None):
     import py_compile
     import tempfile
     meta = meta or {}
+    _check_pyc_python_version()
     # cmd 形如 "apps/<group>/<app>/app.py", 相对仓库根;
     # 用 app_dir 相对仓库根的前缀精确剥掉, 得到相对 app_dir 的入口路径
     try:

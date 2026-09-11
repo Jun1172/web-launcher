@@ -102,7 +102,7 @@ __SHARED_CSS__
     justify-content: center;
     background: var(--glass-bg);
     background:
-        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 42%, transparent) 0%, transparent 65%),
+        radial-gradient(circle at 30% 30%, rgba(var(--c-rgb,128,128,128),0.42) 0%, transparent 65%),
         linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
@@ -119,19 +119,19 @@ __SHARED_CSS__
 .icon:hover .tile {
     background: var(--glass-bg-hover);
     background:
-        radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 60%, transparent) 0%, transparent 60%),
+        radial-gradient(circle at 30% 30%, rgba(var(--c-rgb,128,128,128),0.60) 0%, transparent 60%),
         linear-gradient(160deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.05) 100%);
     border-color: var(--glass-border-hover);
     transform: translateY(-6px) scale(1.08);
     box-shadow: var(--tile-shadow-hover), inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    box-shadow: var(--tile-shadow-hover), 0 0 28px color-mix(in srgb, var(--c) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    box-shadow: var(--tile-shadow-hover), 0 0 28px rgba(var(--c-rgb,128,128,128),0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 .icon:active .tile { transform: scale(0.95); transition: transform 0.1s; }
 
 /* 周期微光：与 metro 相同机制，图标偶尔泛起主色光 */
 @keyframes tile-glow-cycle {
     0%, 92%, 100% { box-shadow: var(--tile-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
-    96% { box-shadow: 0 0 26px color-mix(in srgb, var(--c) 42%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.16); }
+    96% { box-shadow: 0 0 26px rgba(var(--c-rgb,128,128,128),0.42), inset 0 1px 0 rgba(255, 255, 255, 0.16); }
 }
 .tile.fx-glow-cycle { animation: tile-glow-cycle var(--shimmer-t, 10s) ease-in-out var(--shimmer-d, 0s) infinite; }
 .tile.fx-glow-cycle:hover { animation-play-state: paused; }
@@ -325,12 +325,14 @@ function buildHome(){
   for(let i=0;i<screenCount;i++)dots.appendChild(document.createElement('i'));
   gotoPage(0);updateDots();}
 
+function hexRgb(h){h=(h||'').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');
+  const n=parseInt(h,16);return isNaN(n)?'128,128,128':((n>>16)&255)+','+((n>>8)&255)+','+(n&255);}
 function iconEl(a){
   const d=document.createElement('div');d.className='icon';d.dataset.id=a.id;
   let reduce=false; try{reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}
   const fx=(!reduce)?' fx-glow-cycle" style="--shimmer-t:'+(8+Math.random()*6).toFixed(1)+
-    's;--shimmer-d:'+(-Math.random()*12).toFixed(1)+'s;--c:'+a.color+'"':
-    '" style="--c:'+a.color+'"';
+    's;--shimmer-d:'+(-Math.random()*12).toFixed(1)+'s;--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"':
+    '" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"';
   const sys=a.system?'<div class="tile system'+fx+'>'+a.icon+'</div>':
     '<div class="tile'+fx+'>'+a.icon+'</div>';
   d.innerHTML=sys+'<div class="name">'+esc(a.name)+'</div>';return d;}

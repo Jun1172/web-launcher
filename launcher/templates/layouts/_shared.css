@@ -300,7 +300,6 @@ body::after {
     margin:-230px 0 0 -230px; border-radius:50%;
     background: radial-gradient(circle,
         var(--pointer-glow, rgba(129,140,248,0.10)) 0%,
-        color-mix(in srgb, var(--pointer-glow, rgba(129,140,248,0.10)) 45%, transparent) 38%,
         transparent 68%);
     opacity:0; transition:opacity 0.6s ease;
     pointer-events:none; z-index:1;

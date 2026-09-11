@@ -52,9 +52,10 @@ __SHARED_CSS__
     color:#fff;
     display:flex; align-items:center; justify-content:center;
     background:
-        radial-gradient(circle at 32% 26%, color-mix(in srgb, var(--c) 72%, transparent) 0%, transparent 58%),
+        radial-gradient(circle at 32% 26%, rgba(var(--c-rgb,128,128,128),0.72) 0%, transparent 58%),
         linear-gradient(165deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.04) 46%, rgba(255,255,255,0.01) 100%),
-        color-mix(in srgb, var(--c) 30%, rgba(26,30,40,0.50));
+        linear-gradient(rgba(var(--c-rgb,128,128,128),0.30), rgba(var(--c-rgb,128,128,128),0.30)),
+        rgba(26,30,40,0.50);
     backdrop-filter: blur(18px) saturate(1.25); -webkit-backdrop-filter: blur(18px) saturate(1.25);
     border: 1px solid rgba(255,255,255,0.14);
     box-shadow:
@@ -103,7 +104,7 @@ __SHARED_CSS__
     border-color: rgba(255,255,255,0.26);
     box-shadow:
         0 18px 34px rgba(0,0,0,0.34),
-        0 0 40px color-mix(in srgb, var(--c) 38%, transparent),
+        0 0 40px rgba(var(--c-rgb,128,128,128),0.38),
         inset 0 1px 0 rgba(255,255,255,0.28),
         inset 0 -14px 26px rgba(0,0,0,0.10);
     z-index:2;
@@ -135,7 +136,7 @@ __SHARED_CSS__
         inset 0 -14px 26px rgba(0,0,0,0.16); }
     96% { box-shadow:
         0 6px 14px rgba(0,0,0,0.22),
-        0 0 34px color-mix(in srgb, var(--c) 45%, transparent),
+        0 0 34px rgba(var(--c-rgb,128,128,128),0.45),
         inset 0 1px 0 rgba(255,255,255,0.30),
         inset 0 -14px 26px rgba(0,0,0,0.10); }
 }
@@ -232,12 +233,15 @@ function buildHome(){
   if(typeof updateDots==='function')updateDots();
 }
 
+function hexRgb(h){h=(h||'').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');
+  const n=parseInt(h,16);return isNaN(n)?'128,128,128':((n>>16)&255)+','+((n>>8)&255)+','+(n&255);}
 /* 构造单个磁贴：class="icon[ lg|md]" data-id=应用id，inline 设置 --c 为应用 color */
 function tileEl(a, size, idx){
   const d=document.createElement('div');
   d.className='icon'+(size?(' '+size):'');
   d.dataset.id=a.id;
   d.style.setProperty('--c', a.color||'#555');
+  d.style.setProperty('--c-rgb', hexRgb(a.color||'#555'));
   /* 入场依次弹出（上限 24 项，避免长列表等待） */
   d.style.animationDelay=Math.min(idx,24)*22+'ms';
   /* 周期微光：每块磁贴独立周期与相位，桌面持续有细节在动 */

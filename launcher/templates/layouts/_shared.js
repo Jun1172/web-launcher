@@ -19,6 +19,19 @@ function showToast(msg,dur){const d=document.createElement('div');d.className='_
   d.textContent=msg;document.body.appendChild(d);
   setTimeout(()=>{d.style.transition='opacity 0.2s';d.style.opacity='0';
     setTimeout(()=>d.remove(),220);},(dur||1600));}
+
+/* 应用上行通知卡片（系统推送，即使来源 app 非当前视图也弹） */
+function showNotify(n){
+  const d=document.createElement('div');d.className='__notify';
+  d.innerHTML='<div class="n-head"><span class="n-icon">'+esc(n.icon||'🔔')+'</span>'
+    +'<span class="n-app">'+esc(n.app||'提醒')+'</span></div>'
+    +'<div class="n-title">'+esc(n.title||'')+'</div>'
+    +'<div class="n-body">'+esc(n.body||'')+'</div>';
+  document.body.appendChild(d);
+  requestAnimationFrame(()=>d.classList.add('show'));
+  setTimeout(()=>{d.classList.remove('show');
+    setTimeout(()=>d.remove(),320);}, 6000);
+}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function clUL(text){if(!text)return'<li style="opacity:.4">暂无</li>';
   return String(text).split('\n').map(s=>s.trim().replace(/^[-•*]\s*/,'')).filter(Boolean)
@@ -296,7 +309,13 @@ async function poll(){
   const cur=APPS.map(a=>a.id).join(',');
   if(prev!==cur&&prev.length&&typeof buildHome==='function')buildHome();
   if(typeof updateDots==='function')updateDots();
-  if(recentsOpen)renderRecents();}
+  if(recentsOpen)renderRecents();
+  // 取走应用上行通知并弹出（即使来源 app 非当前视图/窗口最小化）
+  try{
+    const p=await fetch('/api/notify/pending');const j=await p.json();
+    (j.items||[]).forEach(n=>showNotify(n));
+  }catch(e){}
+}
 
 /* ── 全局手势 ── */
 let drag=null;

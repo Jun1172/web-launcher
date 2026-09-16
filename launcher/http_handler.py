@@ -16,6 +16,8 @@
   GET /stub?id=xxx              → stub 占位页
 """
 import json
+import threading
+import time
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -36,6 +38,14 @@ from .frontend import render_home_html, stub_html
 APP_FIELDS = ("id", "name", "icon", "color", "version", "cmd",
               "port", "dock", "group", "system", "changelog",
               "released", "port_conflict")
+
+# ── 应用→launcher 上行通知队列 ──
+# 任意 app 可跨源 POST /api/notify 写入；桌面 shell 每 2s 轮询 /api/notify/pending 弹出。
+# 队列在 launcher 进程内，app 退出不影响；即使 app 非当前视图/窗口最小化也可弹出。
+_NOTIFY_QUEUE = []
+_NOTIFY_LOCK = threading.Lock()
+_NOTIFY_SEQ = 0
+_NOTIFY_MAX = 50  # 防止 shell 未轮询时无限堆积
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -167,6 +177,14 @@ class Handler(BaseHTTPRequestHandler):
                 "fx_meteor": ui.get("fx_meteor", True),
                 "fx_ripple": ui.get("fx_ripple", True),
             })
+            return
+
+        # ── 应用上行通知：取走并清空待弹队列（桌面 shell 轮询调用）──
+        if path == "/api/notify/pending":
+            with _NOTIFY_LOCK:
+                out = list(_NOTIFY_QUEUE)
+                _NOTIFY_QUEUE.clear()
+            self._json({"items": out})
             return
 
         # ── 安装/升级到最新 ──
@@ -308,6 +326,26 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "msg": "已保存"})
             except Exception as e:
                 self._json({"ok": False, "msg": f"保存失败: {e}"})
+            return
+
+        # ── 应用上行通知：写入队列（任意 app 可跨源 POST）──
+        if path == "/api/notify":
+            title = str(data.get("title", "") or "").strip()
+            body = str(data.get("body", "") or "").strip()
+            app = str(data.get("app", "") or "").strip()
+            icon = str(data.get("icon", "") or "").strip()
+            if not (title or body):
+                self._json({"ok": False, "msg": "title/body 不能都为空"})
+                return
+            global _NOTIFY_SEQ
+            with _NOTIFY_LOCK:
+                _NOTIFY_SEQ += 1
+                item = {"id": _NOTIFY_SEQ, "app": app, "icon": icon,
+                        "title": title, "body": body, "ts": time.time()}
+                _NOTIFY_QUEUE.append(item)
+                if len(_NOTIFY_QUEUE) > _NOTIFY_MAX:
+                    _NOTIFY_QUEUE[:] = _NOTIFY_QUEUE[-_NOTIFY_MAX:]
+            self._json({"ok": True, "id": _NOTIFY_SEQ})
             return
 
         self._json({"ok": False, "msg": "未知 POST 路由"})

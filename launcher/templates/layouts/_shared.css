@@ -256,6 +256,25 @@ body::after {
 }
 @keyframes pop { from { transform: translate(-50%,-50%) scale(0.9); opacity:0; } }
 
+/* ── 应用上行通知（系统推送卡片）── */
+.__notify{
+    position:fixed; top:64px; right:18px; z-index:9998; width:300px; max-width:80vw;
+    padding:14px 16px;
+    background: var(--toast-bg);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border:1px solid var(--glass-border); border-radius:14px;
+    color: var(--text-primary);
+    box-shadow: var(--toast-shadow);
+    opacity:0; transform: translateX(20px);
+    transition: opacity .3s, transform .3s;
+}
+.__notify.show{ opacity:1; transform: translateX(0); }
+.__notify .n-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.__notify .n-icon{ font-size:18px; }
+.__notify .n-app{ font-size:12px; color: var(--text-secondary); font-weight:600; }
+.__notify .n-title{ font-size:14px; font-weight:700; margin-bottom:4px; line-height:1.4; }
+.__notify .n-body{ font-size:13px; line-height:1.6; white-space:pre-wrap; opacity:.92; }
+
 /* ══════════════ 氛围动态层（粒子/光晕，JS 注入 #fx-layer） ══════════════ */
 
 /* 星尘粒子：CSS 动画上浮 + JS 随机化 duration/size/delay/位置 */

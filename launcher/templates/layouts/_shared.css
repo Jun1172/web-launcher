@@ -1,9 +1,19 @@
 /* _shared.css - 跨布局通用样式（重置/状态栏/最近任务/模态/页面/Toast）
    布局专属样式（图标/网格/Dock/大时钟）由各 layouts/*.html 自行定义 */
+
+/* ── 内置 emoji 字体子集 ──
+   Noto Color Emoji COLRv1 子集（OFL 许可），由 tools/make_emoji_font.py 生成。
+   兜底目标：无 Segoe UI Emoji 或字形陈旧的老 Win10/Server（图标显示为豆腐块）。
+   仅含 launcher 实际用到的 emoji 码点；新应用图标引入新 emoji 后需重新生成子集。 */
+@font-face {
+    font-family: "EmojiFallback";
+    src: url("/font/emoji.woff2") format("woff2");
+    font-display: block;
+}
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html, body { height:100%; overflow:hidden; }
 body {
-    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: "EmojiFallback", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
     -webkit-font-smoothing: antialiased;
     color: var(--text-primary);
     user-select: none;
@@ -369,12 +379,15 @@ body.fx-ready #fx-glow { opacity:1; }
     50%      { filter: drop-shadow(0 3px 14px rgba(0,0,0,0.22)) drop-shadow(0 0 44px var(--clock-glow, rgba(129,140,248,0.55))); }
 }
 
-/* 尊重系统"减少动态效果"设置（无障碍） */
+/* 尊重系统"减少动态效果"设置（无障碍）。
+   html.fx-force = ui.fx_enabled=true 时的强制特效旁路（_shared.js 添加）：
+   老 Win10/Server 与 RDP 会话默认关闭系统动画 → matchMedia 报 reduce，
+   此时 JS 已强制创建特效 DOM，CSS 侧同步解除封锁，避免粒子/光晕白建。 */
 @media (prefers-reduced-motion: reduce) {
-    .fx-star, .fx-star.big, .fx-meteor { animation: none; display:none; }
-    #fx-glow { display:none; }
-    .fx-clock-breathe, .fx-flip { animation: none; }
-    body::after { animation: none; }
+    html:not(.fx-force) .fx-star, html:not(.fx-force) .fx-star.big, html:not(.fx-force) .fx-meteor { animation: none; display:none; }
+    html:not(.fx-force) #fx-glow { display:none; }
+    html:not(.fx-force) .fx-clock-breathe, html:not(.fx-force) .fx-flip { animation: none; }
+    html:not(.fx-force) body::after { animation: none; }
 }
 
 /* 磁贴 shimmer 同样受窗口隐藏暂停控制 */

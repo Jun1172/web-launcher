@@ -21,3 +21,8 @@ etws
 general
 ros
 rv1103
+
+# emoji 字体工程（Noto 完整字体 24MB，不入库；子集 woff2 保留）
+tools/fonts/NotoColorEmoji-COLRv1.ttf
+tools/fonts/noto-emoji/
+.emoji_chars.txt

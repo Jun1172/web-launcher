@@ -330,6 +330,8 @@ function hexRgb(h){h=(h||'').replace('#','');if(h.length===3)h=h.split('').map(c
 function iconEl(a){
   const d=document.createElement('div');d.className='icon';d.dataset.id=a.id;
   let reduce=false; try{reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}
+  /* ui.fx_enabled=true 强制特效：老 Win10/Server 系统动画默认关闭（reduce 误报），旁路恢复流光 */
+  if(reduce && window.__uiCfg && __uiCfg.fx_enabled===true)reduce=false;
   const fx=(!reduce)?' fx-glow-cycle" style="--shimmer-t:'+(8+Math.random()*6).toFixed(1)+
     's;--shimmer-d:'+(-Math.random()*12).toFixed(1)+'s;--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"':
     '" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"';

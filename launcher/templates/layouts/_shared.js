@@ -452,13 +452,17 @@ setTimeout(setupWinChrome,1500);
    4) 流星：7~16s 随机一颗划过
    5) 点击涟漪：磁贴/图标按下扩散光环
    6) 资源守护：窗口最小化/隐藏时 CSS 动画暂停 + rAF 停表
-   全部 respect prefers-reduced-motion（CSS 侧已关动画，这里直接不建 DOM）
+   默认 respect prefers-reduced-motion；ui.fx_enabled=true 时强制开（覆盖 Server 默认关闭系统动画）
    config.json 的 ui.fx_enabled=false 时整体跳过（嵌入式低端设备节能模式） */
 function setupAmbientFX(){
   var reduce = false;
   try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
-  if (reduce) return;
-  if (__uiCfg.fx_enabled === false) return;  /* config.json 关闭动效 */
+  if (__uiCfg.fx_enabled === false) return;  /* config.json 显式关闭 → 无条件跳过 */
+  if (reduce && __uiCfg.fx_enabled !== true) return;
+  /* ↑ 系统"减少动态效果"（老 Win10/Server 默认关闭"显示动画"）：
+     默认尊重系统；但 ui.fx_enabled=true 时视为"强制开特效"，无视系统设置。
+     Windows Server / RDP 会话的系统动画默认被关，靠这一旁路恢复氛围特效。 */
+  if (reduce) document.documentElement.classList.add('fx-force');  /* 解除 CSS 侧 @media reduce 封锁 */
 
   /* ── 粒子层 ── */
   var layer = document.createElement('div');

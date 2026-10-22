@@ -26,6 +26,18 @@ else:
 _THEMES_DIR = _TEMPLATES_DIR / "themes"
 _LAYOUTS_DIR = _TEMPLATES_DIR / "layouts"
 
+# 供 http_handler 等外部模块使用的模板根目录（打包态/开发态均已正确解析）
+TEMPLATES_DIR = _TEMPLATES_DIR
+
+# emoji 字体子集（Noto Color Emoji COLRv1，由 tools/make_emoji_font.py 生成）。
+# 注入各页面的 @font-face 块：解决老 Win10/Server 缺 Segoe UI Emoji 时的图标豆腐块。
+EMOJI_FONTFACE = (
+    '@font-face{font-family:"EmojiFallback";'
+    'src:url("/font/emoji.woff2") format("woff2");'
+    'font-display:block}'
+)
+FONT_STACK = '"EmojiFallback", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif'
+
 # 主题注册表：id → {name, swatch}。
 # 新增主题 = 在 themes/ 加 <id>.html + 在此注册一项。
 # swatch 是前端主题按钮的预览色块（CSS background 值）。
@@ -119,7 +131,8 @@ def stub_html(a):
     icon = _escape(a.get("icon", "📦"))
     name = _escape(a.get("name", "应用"))
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-body{{font-family:system-ui;display:flex;flex-direction:column;align-items:center;
+{EMOJI_FONTFACE}
+body{{font-family:{FONT_STACK};display:flex;flex-direction:column;align-items:center;
 justify-content:center;height:100vh;margin:0;background:linear-gradient(160deg,{color}33,#fff)}}
 .ic{{font-size:64px}}p{{color:#999;font-size:13px}}</style></head>
 <body><div class="ic">{icon}</div><h2>{name}</h2><p>占位应用 · 待接入</p></body></html>"""

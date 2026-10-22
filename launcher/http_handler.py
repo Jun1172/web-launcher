@@ -14,6 +14,7 @@
   GET /api/repo/config          → 读取仓库地址/认证/SSL 配置
   POST /api/repo/config         → 保存仓库配置（原子写 config.json + reload）
   GET /stub?id=xxx              → stub 占位页
+  GET /font/emoji.woff2         → 内置 emoji 字体子集（老系统图标豆腐块兜底）
 """
 import json
 import threading
@@ -32,7 +33,7 @@ from .app_operations import (
     get_launcher_version_info, do_launcher_update,
 )
 from .repo import repo_index
-from .frontend import render_home_html, stub_html
+from .frontend import render_home_html, stub_html, TEMPLATES_DIR
 
 # /api/apps 允许暴露的应用字段白名单（避免把 app.json 中 env 等敏感字段发给前端）
 APP_FIELDS = ("id", "name", "icon", "color", "version", "cmd",
@@ -68,6 +69,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(b)
+
+    def _binary(self, data, ctype, cache="public, max-age=3600"):
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", cache)
+        self.end_headers()
+        self.wfile.write(data)
 
     # 屏蔽默认 stderr 日志
     def log_message(self, fmt, *args):  # noqa: A002  # BaseHTTP 原签名
@@ -264,6 +273,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._html("Not Found", status=404)
                 return
             self._html(stub_html(app))
+            return
+
+        # ── 内置 emoji 字体子集（解决老 Win10/Server 缺 Segoe UI Emoji 字形的豆腐块）──
+        if path == "/font/emoji.woff2":
+            p = TEMPLATES_DIR / "fonts" / "emoji-subset.woff2"
+            if p.is_file():
+                self._binary(p.read_bytes(), "font/woff2")
+            else:
+                self._html("font not found", status=404)
             return
 
         # ── 404 fallback ──

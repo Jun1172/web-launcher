@@ -23,6 +23,14 @@ import json
 import os
 import subprocess
 import sys
+
+# 控制台编码加固: GBK 控制台遇到特殊字符会 UnicodeEncodeError, 统一转 UTF-8 add 261023
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 from pathlib import Path
 
 # 本脚本位于 tools/ 目录下，仓库根目录为其上一级
@@ -137,7 +145,9 @@ def main():
            "-d", str(out_dir),
            "--only-binary=:all:",
            "--python-version", py_tag,
-           "--implementation", "cp"] + deps
+           "--implementation", "cp",
+           # 国内镜像优先, 避免 pypi.org 直连超时 add 261023
+           "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"] + deps
 
     # manylinux 需要按备选顺序试；Windows 只有一个标签
     for pip_plat in PLATFORMS[plat]:

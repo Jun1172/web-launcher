@@ -8,6 +8,14 @@ runtime/ 与 wheels/ 是 git 忽略的二进制产物；生成脚本在 tools/ �
 """
 import subprocess
 import sys
+
+# 控制台编码加固: GBK 控制台遇到特殊字符会 UnicodeEncodeError, 统一转 UTF-8 add 261023
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent   # tools/ 上一级 = 仓库根

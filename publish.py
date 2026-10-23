@@ -618,6 +618,14 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
     files += launcher_pkg_files
     files += system_files
 
+    # 内嵌 Python runtime 随 launcher 分发(存在即入包) add 261023
+    runtime_dir = BASE / "runtime"
+    if runtime_dir.exists():
+        for p in runtime_dir.rglob("*"):
+            if p.is_file():
+                files.append(p.relative_to(BASE))
+        print(f"   🧬 内嵌 runtime 已入包: runtime/ ({len(files)} 文件总计)")
+
     zip_path = BASE / f"launcher-{version}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for rel in files:

@@ -175,6 +175,9 @@ def _app_env(app):
     if site:
         pp = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (site + os.pathsep + pp) if pp else site
+        # 内嵌 runtime 的 ._pth 隔离模式会忽略 PYTHONPATH，
+        # 由 runtime 的 sitecustomize 读取 LAUNCHER_APP_SITE 完成注入 add 261023
+        env["LAUNCHER_APP_SITE"] = site
     return env
 
 

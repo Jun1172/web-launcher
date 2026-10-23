@@ -409,6 +409,17 @@ def _update_dev(meta):
                 except Exception as e:
                     safe_print(f"[WARN] 更新应用 {app_sub.name} 失败: {e}")
 
+    # 覆盖 runtime/（内嵌 Python 运行时，存在即整体替换）add 261023
+    remote_rt = unzipped / "runtime"
+    if remote_rt.exists() and remote_rt.is_dir():
+        local_rt = BASE / "runtime"
+        try:
+            if local_rt.exists():
+                shutil.rmtree(local_rt, ignore_errors=True)
+            shutil.copytree(remote_rt, local_rt)
+        except Exception as e:
+            return False, f"覆盖 runtime/ 失败: {e}", False
+
     shutil.rmtree(tmp_root, ignore_errors=True)
     config.reload_config()
     return True, "✅ 更新完成，版本号已实时刷新；launcher 代码需重启生效", True

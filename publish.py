@@ -87,7 +87,7 @@ def _ensure_remote_dirs():
     try:
         subprocess.run(
             ["ssh", SERVER, f"mkdir -p {REMOTE}/{PACKAGES_DIR}"],
-            check=False, capture_output=True, timeout=15,
+            check=False, capture_output=True, timeout=30,
         )
     except Exception as e:
         print(f"  ⚠ ssh mkdir 失败（可能目录已存在）: {e}")
@@ -109,11 +109,18 @@ def upload_app_wheels(meta):
         shutil.rmtree(stage)
     stage.mkdir(parents=True)
     need = [str(d) for d in deps]
+    #wheels_python: 按部署机 Python 版本下载 wheels(默认按发布机当前解释器) add 261023
+    wp = str(PUBLISH_CFG.get("wheels_python", "")).strip()
+    cross = []
+    if wp:
+        cross = ["--python-version", wp, "--implementation", "cp", "--platform",
+                 "win_amd64" if sys.platform == "win32" else "manylinux2014_x86_64"]
+        print(f"   🎯 wheels 目标 Python: {wp}")
     print(f"   📥 下载依赖 wheels: {', '.join(need)}")
     try:
         r = subprocess.run(
             [sys.executable, "-m", "pip", "download", "--only-binary", ":all:",
-             "--dest", str(stage)] + need,
+             "--dest", str(stage)] + cross + need,
             capture_output=True, text=True, timeout=600, encoding="utf-8", errors="replace",
         )
         if r.returncode != 0:
@@ -128,11 +135,13 @@ def upload_app_wheels(meta):
         return True
     print(f"   ✓ {len(whls)} 个 wheel: {', '.join(w.name for w in whls)}")
     try:
-        subprocess.run(["ssh", SERVER, f"mkdir -p {REMOTE}/wheels/{plat}"],
-                       check=False, capture_output=True, timeout=15)
+        subprocess.run(
+            ["ssh", SERVER, f"mkdir -p {REMOTE}/wheels/{plat}"],
+            check=False, capture_output=True, timeout=30)
         subprocess.run(
             ["scp", *[str(w) for w in whls], f"{SERVER}:{REMOTE}/wheels/{plat}/"],
             check=True, capture_output=True, text=True, timeout=300,
+            encoding="utf-8", errors="replace",
         )
         print(f"   ✓ wheels 已上传 → {REMOTE}/wheels/{plat}/")
     except Exception as e:
@@ -207,6 +216,7 @@ def ensure_index():
         subprocess.run(
             ["scp", f"{SERVER}:{REMOTE}/index.json", str(index_tmp)],
             check=True, capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
         )
         index = json.loads(index_tmp.read_text(encoding="utf-8"))
     except subprocess.CalledProcessError:
@@ -401,6 +411,7 @@ def publish_one(app_dir, *, upload=True, index_override=None):
             subprocess.run(
                 ["scp", str(zip_path), f"{SERVER}:{REMOTE}/{PACKAGES_DIR}/"],
                 check=True, capture_output=True, text=True, timeout=120,
+                encoding="utf-8", errors="replace",
             )
         except subprocess.CalledProcessError as e:
             print(f"❌ 上传失败: {e.stderr or e.stdout or e}")
@@ -436,6 +447,7 @@ def write_and_upload_index(index, index_tmp=None):
     subprocess.run(
         ["scp", str(index_tmp), f"{SERVER}:{REMOTE}/index.json"],
         check=True, capture_output=True, text=True, timeout=30,
+        encoding="utf-8", errors="replace",
     )
     print(f"   ✓ index.json 更新完成（{len(index.get('apps', []))} 个应用）")
 
@@ -445,6 +457,7 @@ def _list_remote_packages():
     result = subprocess.run(
         ["ssh", SERVER, f"ls -1 {REMOTE}/{PACKAGES_DIR}/"],
         check=True, capture_output=True, text=True, timeout=30,
+        encoding="utf-8", errors="replace",
     )
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 

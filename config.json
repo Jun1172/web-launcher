@@ -27,6 +27,7 @@
   "publish": {
     "server": "ubuntu@1.15.30.237",
     "remote_path": "/var/www/repo",
-    "packages_dir": "packages"
+    "packages_dir": "packages",
+    "wheels_python": "3.9"
   }
 }

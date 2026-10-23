@@ -31,17 +31,25 @@ def _py_index_url():
 
 
 def _pip_cmd():
-    """跑 pip 用的命令: 优先随身 runtime python。"""
+    """跑 pip 用的命令: 优先随身 runtime python。
+    frozen 态(launcher.exe)的 sys.executable 是 launcher 自己,
+    拿它跑 -m pip 会再拉起一个 launcher 窗口而不是 pip —— 直接放弃 add 261023。
+    """
     from .process_manager import runtime_python
     rt = runtime_python()
     if rt:
         return [rt, "-m", "pip"]
+    if getattr(sys, "frozen", False):
+        return None
     return [sys.executable, "-m", "pip"]
 
 
 def _has_pip():
+    cmd = _pip_cmd()
+    if not cmd:
+        return False
     try:
-        subprocess.run(_pip_cmd() + ["--version"], capture_output=True,
+        subprocess.run(cmd + ["--version"], capture_output=True,
                        timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return True
     except Exception:
@@ -70,7 +78,10 @@ def _installed_ok(site_dir, deps):
 
 def _run_pip(args, timeout=300):
     """跑 pip, 返回 (ok, 输出)。"""
-    cmd = _pip_cmd() + args
+    cmd = _pip_cmd()
+    if not cmd:
+        return False, "无 pip 可用(缺少 runtime)"
+    cmd = cmd + args
     kw = {"capture_output": True, "text": True, "timeout": timeout,
           "encoding": "utf-8", "errors": "replace"}
     if os.name == "nt":

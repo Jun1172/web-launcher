@@ -3,9 +3,9 @@
     "host": "127.0.0.1",
     "port": 8000,
     "title": "WebLauncher",
-    "version": "1.0.8",
-    "released": "2026-10-23T11:35:00",
-    "changelog": "内嵌 Python 3.11.9 runtime：应用启动与依赖安装统一使用 launcher 随身解释器，部署机无需安装 Python、版本不再受系统环境影响（3.9 pyc 报 null bytes 的问题就此终结）；应用依赖目录改经 LAUNCHER_APP_SITE 注入（兼容 ._pth 隔离模式）；launcher 更新时 runtime/ 随包整体替换。"
+    "version": "1.0.9",
+    "released": "2026-10-23T12:50:00",
+    "changelog": "修复 frozen 态(launcher.exe)依赖安装回退时误拉起第二个 launcher 窗口的问题（sys.executable 不能跑 pip）；runtime 交付补充包 runtime.zip 已放仓库根目录，旧版 launcher 更新不会自动携带 runtime，手动解压到 launcher 根目录即可。"
   },
   "ui": {
     "show_window_buttons": true,

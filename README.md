@@ -345,7 +345,10 @@ app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并�
 ├── packages/
 │   ├── hello-1.0.0.zip
 │   ├── weather-1.0.0.zip
-│   └── launcher-1.0.0.zip   # launcher 自更新包
+│   ├── launcher-1.0.0.zip   # 源码/资源 OTA 包
+│   └── launcher-1.0.0.exe   # frozen Launcher OTA 二进制
+├── runtime.zip              # 全局 Python runtime
+├── wheels-win-x64.zip       # 终端自动部署的依赖 wheels
 └── wheels/win-x64/          # 依赖 wheels（全部应用共享）
     ├── paramiko-5.0.0-py3-none-any.whl
     └── cryptography-*.whl
@@ -355,13 +358,16 @@ app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并�
 
 ```bash
 # 1. 修改 config.json 的 launcher.version（如 1.0.3）
-# 2. 发布
+# 发布 Launcher 源码包、runtime 和 wheels
 python publish.py --launcher --changelog "修复 X，新增 Y"
+
+# 同时构建并上传 launcher.exe，供已打包的 Launcher 从 Repo 自更新
+python publish.py --launcher --build --changelog "修复 X，新增 Y"
 ```
 
-通过 `GET /api/launcher/version` 查看本地/远端版本对比，`GET /api/launcher/update` 触发 OTA 更新。
+通过 `GET /api/launcher/version` 查看本地/远端版本对比，`GET /api/launcher/update` 触发 OTA 更新。源码运行的 Launcher 使用 `pkg` 更新；已打包的 `launcher.exe` 使用 Repo 中的 `binary` 更新，不再依赖 Gitee。
 
-> 注：外部独立更新工具（`launcher_updater.py`）尚未实现，当前仅支持通过 UI 触发 OTA；见路线图。
+`launcher.exe` 自动更新要求发布时带上 `--build`，这样 `index.json` 会记录 `binary`、`binary_sha256` 和 `binary_size`。如果只发布 zip，源码模式可以更新，已打包的 exe 会提示 Repo 缺少 binary。
 
 ## 🎯 内置应用
 

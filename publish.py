@@ -1,27 +1,45 @@
-"""应用发布脚本（在仓库根目录手动运行）
-用法:
-python publish.py                     # 列出所有可发布的应用
-python publish.py <app_dir>           # 发布单个（例: apps/user/hello）
-python publish.py --all               # 一键发布所有应用
-python publish.py --group admin       # 一键发布指定分组的应用
-python publish.py --list              # 仅列出，不发布
-python publish.py --launcher          # 打包并发布 launcher 主程序更新
-python publish.py --sync              # 对照远端 packages/ 清理 index.json 中失效条目
+"""应用发布与 Launcher 发布工具（在仓库根目录运行）。
+
+应用发布:
+  python publish.py                         # 列出所有可发布应用
+  python publish.py --list                  # 仅列出应用，不发布
+  python publish.py <app_dir>               # 发布单个 App
+  python publish.py --all                   # 发布全部 App
+  python publish.py --group <group>         # 发布指定分组
+
+测试与同步:
+  python publish.py <app_dir> --dry-run     # 只打包 App，不上传
+  python publish.py --all --dry-run         # 只打包全部 App，不上传
+  python publish.py --sync                  # 清理远端 index.json 失效条目
+  python publish.py --sync --dry-run        # 预览同步结果，不修改远端
+  python publish.py --sync --yes             # 同步时跳过确认
+
+Launcher 发布:
+  python publish.py --launcher                         # 发布 zip、runtime、wheels
+  python publish.py --launcher --build                 # 额外构建并上传 launcher.exe
+  python publish.py --launcher --changelog "更新说明"  # 设置更新说明
+  python publish.py --launcher --build --dry-run      # 构建但不上传，检查发布包
+
+Launcher 发布会自动处理:
+  - launcher-<version>.zip：源码/资源 OTA 包
+  - runtime.zip：全局 Python 运行时
+  - wheels-<platform>.zip：终端自动部署的依赖包
+  - wheels/<platform>/*.whl：Repo 在线安装依赖
+  - --build 时额外上传 launcher-<version>.exe，供已打包 Launcher OTA
+
+应用还支持:
+  - app.json 的 deps：自动收集并上传 Python wheels
+  - app.json 的 standalone：将 runtime 打进 App 包
+  - App 目录内 icon.png/icon.svg：自动作为图片图标发布
+  - import 的 apps 内本地模块：自动收集到当前 App 包
 
 源码保护 (protect):
-  app.json 里加 "protect": true 的应用, 发布时自动去源码化:
-  - .py 编译为同位置 .pyc 入包(zip 内无业务 .py 源码)
-  - .html/.htm 轻量压缩(去注释/空行)
-  - cmd 指向的入口 .py 生成几行 runpy 启动器(加载同目录 .pyc),
-    cmd 保持原样 —— 与未保护应用同构, 走 .py 文件关联启动,
-    不要求部署机 PATH 里有 python 命令
-  安装端与 launcher 零改动(cmd 语义不变, LAUNCHER_APP_PORT 照常传递)。
-  注意: pyc 绑定 Python 版本, 发布机的 Python 大版本需与部署机一致。
+  app.json 里加 "protect": true 时，发布时自动将 .py 编译为 .pyc，
+  入口生成 runpy 启动器；包内不含业务源码。
 
 打包排除 (exclude):
   build/ data/ site/ .git/ __pycache__/ .venv/ 永不入包；
-  应用可在 app.json 加 "exclude": ["cpp", "wrapper"] 追加排除
-  （任一上级目录名命中即排除整个子树，防止源码/产物外泄）。
+  应用可在 app.json 加 "exclude": ["cpp", "wrapper"] 追加排除。
 """
 import argparse
 import ast
@@ -763,12 +781,29 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="应用发布工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="示例:\n"
-               "  python publish.py apps/user/hello                    发布单个 app\n"
-               "  python publish.py --all                               发布所有应用\n"
-               "  python publish.py --group admin                       发布 admin 分组应用\n"
-               "  python publish.py --sync                              清理 index.json 失效条目\n"
-               "  python publish.py --sync --dry-run                    仅预览不写远端\n"
+        epilog="""常用示例:
+  python publish.py                                  列出所有应用
+  python publish.py --list                           仅列出，不发布
+  python publish.py apps/user/hello                  发布单个 App
+  python publish.py --all                            发布全部 App
+  python publish.py --group admin                    发布指定分组
+
+  python publish.py apps/user/hello --dry-run        只打包单个 App，不上传
+  python publish.py --all --dry-run                  只打包全部 App，不上传
+
+  python publish.py --launcher                      发布 Launcher zip、runtime、wheels
+  python publish.py --launcher --build               同时构建并上传 launcher.exe
+  python publish.py --launcher --changelog \"说明\"  设置 Launcher 更新说明
+  python publish.py --launcher --build --dry-run    构建并打包，但不上传
+
+  python publish.py --sync                         清理远端失效 index 条目
+  python publish.py --sync --dry-run               预览同步结果，不修改远端
+  python publish.py --sync --yes                    同步时跳过确认
+
+发布 Launcher 时会自动生成/上传:
+  runtime.zip、wheels-<平台>.zip、wheels/<平台>/*.whl
+  使用 --build 时还会上传 launcher-<version>.exe，供已打包 Launcher OTA。
+"""
     )
     g = parser.add_mutually_exclusive_group()
     g.add_argument("app_dir", nargs="?", help="要发布的单个应用路径")
@@ -778,9 +813,10 @@ def parse_args():
     g.add_argument("--launcher", action="store_true", help="打包并发布 launcher 主程序更新")
     g.add_argument("--sync", action="store_true", help="对照远端 packages/ 清理 index.json 中失效条目")
 
-    parser.add_argument("--dry-run", action="store_true", help="只打包不上传（测试打包）；--sync 时只预览不写远端")
-    parser.add_argument("--yes", "-y", action="store_true", help="跳过交互确认（配合 --sync）")
-    parser.add_argument("--changelog", type=str, default="", help="launcher 更新说明（配合 --launcher 使用）")
+    parser.add_argument("--dry-run", action="store_true", help="只打包不上传；Launcher/App 均适用；--sync 时仅预览")
+    parser.add_argument("--yes", "-y", action="store_true", help="跳过 --sync 的交互确认")
+    parser.add_argument("--changelog", type=str, default="", help="Launcher 更新说明，仅配合 --launcher")
+    parser.add_argument("--build", action="store_true", help="构建并上传 launcher.exe，仅配合 --launcher")
     return parser.parse_args()
 
 def build_runtime_zip() -> Path | None:
@@ -866,7 +902,29 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
             z.write(full, rel.as_posix())
     return zip_path
 
-def publish_launcher(*, upload: bool, changelog: str = ""):
+def build_launcher_binary(version):
+    """用 launcher.spec 构建待发布的 launcher.exe。"""
+    spec = BASE / "launcher.spec"
+    if not spec.exists():
+        raise FileNotFoundError(f"未找到构建配置: {spec}")
+    print("   🔨 构建 launcher.exe...")
+    r = subprocess.run(
+        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)],
+        cwd=str(BASE), capture_output=True, text=True, timeout=900,
+        encoding="utf-8", errors="replace",
+    )
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "PyInstaller 构建失败")[-1200:])
+    built = BASE / "dist" / "launcher.exe"
+    if not built.is_file():
+        raise FileNotFoundError(f"构建完成但未找到: {built}")
+    output = BASE / f"launcher-{version}.exe"
+    shutil.copy2(built, output)
+    print(f"   ✓ {output.name} ({output.stat().st_size} bytes)")
+    return output
+
+
+def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
     """发布 launcher 主程序更新"""
     version = CONFIG.get("launcher", {}).get("version")
     if not version:
@@ -878,6 +936,14 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
         print(f"   更新说明: {changelog}")
 
     zip_path = build_launcher_zip(version, changelog)
+    binary_path = None
+    if build:
+        try:
+            binary_path = build_launcher_binary(version)
+        except Exception as e:
+            print(f"❌ launcher.exe 构建失败: {e}")
+            zip_path.unlink(missing_ok=True)
+            return False
     runtime_zip_path = build_runtime_zip()
     try:
         wheels_bundle = build_wheels_bundle()
@@ -886,6 +952,8 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
         zip_path.unlink(missing_ok=True)
         if runtime_zip_path:
             runtime_zip_path.unlink(missing_ok=True)
+        if binary_path:
+            binary_path.unlink(missing_ok=True)
         return False
     print(f"   ✓ {zip_path.name} ({zip_path.stat().st_size} bytes, "
           f"sha256={sha256(zip_path)[:12]}...)")
@@ -905,6 +973,10 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
         "sha256": sha256(zip_path),
         "released": datetime.datetime.now().isoformat(),
     }
+    if binary_path:
+        entry["binary"] = f"{PACKAGES_DIR}/{binary_path.name}"
+        entry["binary_sha256"] = sha256(binary_path)
+        entry["binary_size"] = binary_path.stat().st_size
 
     index = None
     index_tmp = None
@@ -921,6 +993,23 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
             zip_path.unlink(missing_ok=True)
             return False
         print(f"   ✓ 上传完成")
+
+        if binary_path:
+            print(f"🚀 上传 {binary_path.name} → {SERVER}:{REMOTE}/{PACKAGES_DIR}/")
+            try:
+                subprocess.run(
+                    ["scp", str(binary_path), f"{SERVER}:{REMOTE}/{PACKAGES_DIR}/"],
+                    check=True, capture_output=True, text=True, timeout=300,
+                    encoding="utf-8", errors="replace",
+                )
+                print("   ✓ launcher.exe 上传完成")
+                if not _verify_upload(entry["binary"]):
+                    print("  ⚠ launcher.exe HTTP 验证失败")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ launcher.exe 上传失败: {e.stderr or e.stdout or e}")
+                zip_path.unlink(missing_ok=True)
+                binary_path.unlink(missing_ok=True)
+                return False
 
         # runtime.zip 不登记到 index.json，Launcher 启动时直接访问仓库根目录。
         if runtime_zip_path:
@@ -972,6 +1061,8 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
                 zip_path.unlink(missing_ok=True)
                 if runtime_zip_path:
                     runtime_zip_path.unlink(missing_ok=True)
+                if binary_path:
+                    binary_path.unlink(missing_ok=True)
                 cleanup_wheels_bundle(wheels_bundle)
                 return False
 
@@ -990,6 +1081,11 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
             runtime_zip_path.unlink()
         except OSError:
             pass
+    if binary_path:
+        try:
+            binary_path.unlink()
+        except OSError:
+            pass
     cleanup_wheels_bundle(wheels_bundle)
 
     print("✅ launcher 更新发布完成！" if upload else "✅ launcher 打包完成（未上传）")
@@ -1002,6 +1098,7 @@ def main():
         ok = publish_launcher(
             upload=not args.dry_run,
             changelog=args.changelog,
+            build=args.build,
         )
         sys.exit(0 if ok else 4)
 
@@ -1016,14 +1113,20 @@ def main():
         print_apps_table(discover_apps("all"))
         v = CONFIG.get("launcher", {}).get("version", "未配置")
         print(f"\n🖥️  Launcher 本地版本: {v}")
-        print("   发布更新: python publish.py --launcher --changelog \"说明\"")
+        print("\n常用命令:")
+        print("  python publish.py --list")
+        print("  python publish.py apps/user/hello")
+        print("  python publish.py --all")
+        print("  python publish.py --group admin")
+        print("  python publish.py apps/user/hello --dry-run")
+        print("  python publish.py --launcher --changelog \"说明\"")
+        print("  python publish.py --launcher --build --changelog \"说明\"")
+        print("  python publish.py --launcher --build --dry-run")
+        print("  python publish.py --sync --dry-run")
+        print("  python publish.py --sync --yes")
+        print("\n完整帮助: python publish.py --help")
         if args.list:
             return
-        print("\n用法:")
-        print("  发布单个  : python publish.py apps/user/hello")
-        print("  发布全部  : python publish.py --all")
-        print("  分组发布  : python publish.py --group admin")
-        print("  只打包    : python publish.py apps/user/hello --dry-run")
         sys.exit(0)
 
     upload = not args.dry_run

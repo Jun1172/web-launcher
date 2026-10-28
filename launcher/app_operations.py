@@ -220,22 +220,6 @@ def get_launcher_version_info():
         "released_remote": "",
         "error": None,
     }
-    if getattr(sys, "frozen", False):
-        try:
-            release = _gitee_latest_release()
-            remote_ver = release["version"]
-            out.update({
-                "remote": remote_ver,
-                "changelog_remote": release["changelog"],
-                "released_remote": release["released"],
-                "source": "gitee-release",
-                "asset": release["asset_name"],
-            })
-            out["upgradable"] = vt(remote_ver) > vt(config.LAUNCHER_VERSION)
-        except Exception as e:
-            out["error"] = str(e)
-        return out
-
     try:
         idx = repo_index()
     except Exception as e:
@@ -247,81 +231,59 @@ def get_launcher_version_info():
     out["remote"] = remote_ver
     out["changelog_remote"] = launcher_meta.get("changelog", "")
     out["released_remote"] = launcher_meta.get("released", "")
+    out["source"] = "repo"
+    out["asset"] = launcher_meta.get("binary") or launcher_meta.get("pkg")
 
     if remote_ver and vt(remote_ver) > vt(config.LAUNCHER_VERSION):
         out["upgradable"] = True
     return out
 
 
-def _gitee_latest_release():
-    """读取 Gitee 最新 Release，并选择配置的 exe 附件。"""
-    cfg = config.GITEE_CFG or {}
-    repo = str(cfg.get("repo", "")).strip().strip("/")
-    if not repo or "/" not in repo:
-        raise ValueError("Gitee 仓库未配置，请填写 owner/repository")
-    api_url = f"https://gitee.com/api/v5/repos/{repo}/releases/latest"
-    req = urllib.request.Request(api_url, headers={"User-Agent": "WebLauncher"})
-    with urllib.request.urlopen(req, timeout=15) as response:
-        release = json.loads(response.read().decode("utf-8"))
-    tag = str(release.get("tag_name") or "").strip()
-    version = tag.lstrip("vV")
-    if not version:
-        raise ValueError("Gitee 最新 Release 缺少 tag_name")
-    assets = release.get("assets") or []
-    wanted = cfg.get("release_asset", "launcher.exe")
-    asset = next((a for a in assets if a.get("name") == wanted), None)
-    if asset is None:
-        asset = next((a for a in assets if str(a.get("name", "")).lower().endswith(".exe")), None)
-    if not asset or not asset.get("browser_download_url"):
-        raise ValueError("Gitee 最新 Release 没有可下载的 exe 附件")
-    return {
-        "version": version,
-        "changelog": release.get("body") or release.get("name") or "",
-        "released": release.get("created_at") or "",
-        "asset_name": asset.get("name"),
-        "asset_url": asset["browser_download_url"],
-    }
-
 def do_launcher_update():
-    """下载远端 launcher 更新 → 校验 → 执行。
+    """从 Repo 下载远端 launcher 更新并执行。
 
-    编译态（PyInstaller）走 _update_frozen_release（二进制替换 + 重启）；
-    开发态走 _update_dev（zip 覆盖源码 + 合并 config + reload）。
+    frozen 模式使用 index.json 的 binary 字段替换 launcher.exe；
+    源码模式使用 pkg 字段覆盖 launcher 源码。两种模式都不再依赖 Gitee。
     """
-    if getattr(sys, "frozen", False):
-        try:
-            return _update_frozen_release(_gitee_latest_release())
-        except Exception as e:
-            return False, f"Gitee Release 更新失败: {e}", False
-
     try:
         idx = repo_index()
     except Exception as e:
         return False, f"连不上仓库: {e}", False
 
-    meta = idx.get("launcher")
+    meta = idx.get("launcher") or {}
     if not meta:
         return False, "远端无 launcher 发布", False
 
+    if getattr(sys, "frozen", False):
+        return _update_frozen_repo(meta)
     return _update_dev(meta)
 
 
-def _update_frozen_release(release):
-    """从 Gitee Release 下载 launcher.exe，并安排替换重启。"""
+def _update_frozen_repo(meta):
+    """从 Repo 的 binary 字段下载 launcher.exe，并安排替换重启。"""
+    binary = meta.get("binary")
+    if not binary:
+        return False, "Repo 的 launcher 条目没有 binary，无法更新已打包的 launcher.exe；请发布 exe 二进制", False
     try:
-        req = urllib.request.Request(release["asset_url"], headers={"User-Agent": "WebLauncher"})
-        with urllib.request.urlopen(req, timeout=60) as response:
-            data = response.read()
+        data = repo_get(binary).read()
     except Exception as e:
-        return False, f"下载 Gitee Release 失败: {e}", False
+        return False, f"下载 Repo launcher.exe 失败: {e}", False
+    expected = meta.get("binary_sha256")
+    if expected:
+        err = verify_sha256(data, expected)
+        if err:
+            return False, f"launcher.exe {err}", False
     if not data.startswith(b"MZ"):
-        return False, "下载的 Release 附件不是有效的 Windows exe", False
+        return False, "Repo 下载的 launcher binary 不是有效的 Windows exe", False
     new_exe = Path(sys.executable).parent / "launcher.new"
-    new_exe.write_bytes(data)
+    try:
+        new_exe.write_bytes(data)
+    except OSError as e:
+        return False, f"写入待更新 launcher 失败: {e}", False
     from . import updater
     ok, msg = updater.launch_self_update(new_exe)
     if ok:
-        return True, f"已下载 Gitee Release v{release['version']}，程序将自动重启", True
+        return True, f"已从 Repo 下载 launcher v{meta.get('version', '?')}，程序将自动重启", True
     return False, msg, False
 
 

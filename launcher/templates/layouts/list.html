@@ -93,11 +93,7 @@ __SHARED_CSS__
     width:10px; height:10px; border-radius:50%; background:var(--success);
     box-shadow: 0 0 8px var(--success), 0 0 0 2px var(--bg-base);
 }
-/* 系统标记：贴在图标右上角 */
-#appList .tile.system::after {
-    content:""; position:absolute; top:5px; right:5px; width:5px; height:5px; border-radius:50%;
-    background:var(--accent); box-shadow: 0 0 8px var(--accent-glow); z-index:2;
-}
+
 
 /* 底部 Dock 栏（仅图标） */
 #dock {
@@ -129,10 +125,7 @@ __SHARED_CSS__
     width:7px; height:7px; border-radius:50%; background:var(--success);
     box-shadow: 0 0 6px var(--success), 0 0 0 1.5px var(--bg-base);
 }
-#dock .tile.system::after {
-    content:""; position:absolute; top:2px; right:2px; width:4px; height:4px; border-radius:50%;
-    background:var(--accent); box-shadow: 0 0 6px var(--accent-glow); z-index:2;
-}
+
 </style>
 __THEME_BLOCKS__
 </head><body>
@@ -256,7 +249,6 @@ function updateDots(){
     const tile=el.querySelector('.tile'); if(!tile)return;
     const a=APPS.find(x=>x.id===el.dataset.id); if(!a)return;
     tile.classList.toggle('running',!!a.running);
-    tile.classList.toggle('system',!!a.system);
     const desc=el.querySelector('.desc');
     if(desc && el.closest('#appList')) desc.innerHTML=descHtml(a);
   });

@@ -161,18 +161,7 @@ __SHARED_CSS__
     background: var(--success);
     box-shadow: 0 0 10px var(--success);
 }
-.tile.system::after {
-    content: "";
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 10px var(--accent-glow);
-    z-index: 2;
-}
+
 
 /* 分页指示器 */
 #dots {
@@ -350,8 +339,7 @@ function updateDots(){
   const run={};APPS.forEach(a=>run[a.id]=a.running);
   document.querySelectorAll('.icon').forEach(el=>{
     const tile=el.querySelector('.tile');
-    if(tile){tile.classList.toggle('running',!!run[el.dataset.id]);
-      tile.classList.toggle('system',!!APPS.find(a=>a.id===el.dataset.id&&a.system));}});}
+    if(tile){tile.classList.toggle('running',!!run[el.dataset.id]);}});}
 
 /* ── 分页拖动跟手（响应 _shared.js 的 onDragH/onSwipeH 约定） ── */
 function onDragH(dx){

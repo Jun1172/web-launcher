@@ -123,15 +123,53 @@ def _resolve_python():
     return list(found) if found else None
 
 
-def runtime_python():
-    """返回随 launcher 分发的内嵌 Python 解释器路径（无则 None）。
+def runtime_python(app=None):
+    """返回 Python 解释器路径，优先级：应用自带 > 全局 runtime > 系统 Python。
 
-    布局: <launcher 根>/runtime/win-x64/python.exe（Windows）
-          <launcher 根>/runtime/linux-x64/bin/python3（Linux，后续支持）
-    打包 exe 时 PyInstaller 通过 runtime/ 目录随身分发。
+    参数:
+        app: 应用元数据字典（可选），用于查找应用自带 runtime
+
+    优先级（standalone 应用）:
+      1) 应用自带 runtime: apps/<group>/<id>/runtime/<platform>/python.exe
+         完全独立，不依赖全局环境，不同应用可用不同 Python 版本
+
+    优先级（非 standalone 应用）:
+      1) 全局 runtime: <launcher 根>/runtime/<platform>/python.exe
+      2) 系统 Python: 回退到注册表关联或 PATH
+
+    布局:
+      - Windows: runtime/win-x64/python.exe
+      - Linux: runtime/linux-x64/bin/python3（后续支持）
     """
-    if getattr(runtime_python, "_cache", None) is not None:
-        return runtime_python._cache or None
+    # 缓存 key: (app_dir, standalone) 或 None（全局）
+    cache = getattr(runtime_python, "_cache", None)
+    if cache is None:
+        cache = runtime_python._cache = {}
+
+    # 1. 应用自带 runtime（standalone=true）
+    if app:
+        app_dir = app.get("_dir")
+        standalone = app.get("standalone", False)
+        if app_dir and standalone:
+            cache_key = ("app", app_dir)
+            if cache_key in cache:
+                return cache[cache_key] or None
+            cand = None
+            if os.name == "nt":
+                p = os.path.join(app_dir, "runtime", "win-x64", "python.exe")
+                if os.path.isfile(p):
+                    cand = p
+            else:
+                p = os.path.join(app_dir, "runtime", "linux-x64", "bin", "python3")
+                if os.path.isfile(p):
+                    cand = p
+            cache[cache_key] = cand or ""
+            return cand
+
+    # 2. 全局 runtime
+    cache_key = ("global",)
+    if cache_key in cache:
+        return cache[cache_key] or None
     root = str(_LAUNCHER_ROOT)  # 唯一的根目录来源：config.BASE
     cand = None
     if os.name == "nt":
@@ -142,7 +180,7 @@ def runtime_python():
         p = os.path.join(root, "runtime", "linux-x64", "bin", "python3")
         if os.path.isfile(p):
             cand = p
-    runtime_python._cache = cand or ""
+    cache[cache_key] = cand or ""
     return cand
 
 
@@ -185,8 +223,9 @@ def _prep_cmd(cmd, app=None):
     """启动命令预处理——解释器解析的唯一入口。
 
     cmd[0] 为 .py/.pyw/.pyc 时前缀 Python 解释器（其余原样返回）：
-      1) 随身分发的内嵌 runtime（版本可控，protect pyc 与其同源）
-      2) Windows: _resolve_python()（注册表文件关联/PATH/自身）
+      1) 应用自带 runtime（standalone=true）：apps/<id>/runtime/<platform>/python.exe
+      2) 全局 runtime（standalone=false 或未设置）：<launcher>/runtime/<platform>/python.exe
+      3) Windows: _resolve_python()（注册表文件关联/PATH/自身）
          POSIX:   sys.executable（源码态）→ PATH 的 python3
     """
     cmd = list(cmd)
@@ -194,9 +233,12 @@ def _prep_cmd(cmd, app=None):
         return cmd
     first = str(cmd[0])
     if first.lower().endswith((".py", ".pyw", ".pyc")):
-        rt = runtime_python()
+        # 优先级 1: 应用自带 runtime（standalone=true）
+        rt = runtime_python(app)
         if rt:
             return [rt] + cmd
+        # 优先级 2: 全局 runtime（已在 runtime_python 内处理）
+        # 优先级 3: 系统 Python
         if os.name == "nt":
             py = _resolve_python()
             if py:

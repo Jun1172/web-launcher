@@ -222,6 +222,7 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 | `group` | string | ❌ | `"user"` | 分组来源；`"system"` 受保护不可卸载 |
 | `dock` | bool | ❌ | false | 是否常驻底部 Dock（用户可用 layout.json 覆盖） |
 | `deps` | string[] | ❌ | — | Python 依赖声明（如 `["paramiko", "numpy>=1.24"]`）；发布时自动上传 wheels，安装时自动装入应用 `site/` |
+| `standalone` | bool | ❌ | false | 完全独立部署：runtime 打进应用包，不依赖全局 runtime，不同应用可用不同 Python 版本 |
 | `protect` | bool | ❌ | false | 发布源码保护：`.py` 编译为 `.pyc` 出包（入口是几行 runpy 启动器），包内不含源码 |
 | `changelog` | string | ❌ | — | 版本说明 |
 | `released` | string | ❌ | — | 发布时间（ISO 8601） |
@@ -297,7 +298,36 @@ python publish.py apps/user/hello --dry-run
 python publish.py --sync
 ```
 
-app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并上传到 repo `/wheels/<平台>/`；声明 `protect: true` 的应用以 `.pyc` 出包（不含源码）。
+app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并上传到 repo `/wheels/<平台>/`；声明 `protect: true` 的应用以 `.pyc` 出包（不含源码）；声明 `standalone: true` 的应用会把 runtime 打进应用包，实现完全独立部署。
+
+### standalone 应用（完全独立部署）
+
+默认情况下，所有 Python 应用共享 launcher 的全局 runtime（`runtime/win-x64/`）。对于需要完全独立部署的应用，可在 `app.json` 声明 `standalone: true`：
+
+```json
+{
+  "id": "critical-app",
+  "name": "关键业务应用",
+  "version": "1.0.0",
+  "standalone": true,
+  "cmd": ["app.py"],
+  "port": 8120
+}
+```
+
+**standalone 应用特点：**
+- runtime 打进应用 zip，安装后存放在 `apps/<group>/<id>/runtime/`
+- 不依赖全局 runtime，下载即用
+- 不同应用可用不同 Python 版本
+- 体积增加约 38MB（适合关键业务应用）
+
+**适用场景：**
+| 应用类型 | standalone | 理由 |
+|---------|-----------|------|
+| 系统应用（store、settings） | `false` | 跟 launcher 一起预装，共享 runtime |
+| 小工具（hello、todo） | `false` | 体积小，不值得带 runtime |
+| 关键业务应用 | `true` | 隔离环境，避免全局 runtime 损坏影响业务 |
+| 需要特定 Python 版本的应用 | `true` | 如必须用 3.11 的 numpy 兼容性 |
 
 ### 仓库结构（远端）
 

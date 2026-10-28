@@ -3,9 +3,9 @@
     "host": "127.0.0.1",
     "port": 8000,
     "title": "WebLauncher",
-    "version": "1.0.9",
-    "released": "2026-10-23T12:50:00",
-    "changelog": "修复 frozen 态(launcher.exe)依赖安装回退时误拉起第二个 launcher 窗口的问题（sys.executable 不能跑 pip）；runtime 交付补充包 runtime.zip 已放仓库根目录，旧版 launcher 更新不会自动携带 runtime，手动解压到 launcher 根目录即可。"
+    "version": "1.1.0",
+    "released": "2026-10-28T10:00:00",
+    "changelog": "新增 standalone 应用支持：app.json 声明 standalone=true 时，runtime 打进应用包，实现完全独立部署；非 standalone 应用继续使用全局 runtime（按需下载）。混合模式兼顾轻量与隔离。"
   },
   "ui": {
     "show_window_buttons": true,

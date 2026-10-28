@@ -97,7 +97,7 @@ def upload_app_wheels(meta):
     """应用声明 deps 时, 下载对应 wheels 并上传到 repo /wheels/<平台>/。
 
     存放约定: /var/www/repo/wheels/win-x64/*.whl
-    launcher 端 deps_installer 用 --find-links 离线装 / 建内网 simple 源均可。
+    launcher 端 deps_installer 通过 --find-links 读取该平台目录。
     依赖只需在服务器存一份, 所有 APP 共享。
     """
     deps = meta.get("deps")
@@ -609,6 +609,29 @@ def parse_args():
     parser.add_argument("--changelog", type=str, default="", help="launcher 更新说明（配合 --launcher 使用）")
     return parser.parse_args()
 
+def build_runtime_zip() -> Path | None:
+    """生成供 Launcher 自动下载的独立 runtime.zip。
+
+    runtime.zip 只包含当前发布平台目录的内容（如 python.exe、Lib/），
+    不带 runtime/win-x64/ 外层目录；安装端会直接解压到 runtime/<平台>/。
+    """
+    plat = "win-x64" if sys.platform == "win32" else "linux-x64"
+    runtime_platform_dir = BASE / "runtime" / plat
+    if not runtime_platform_dir.is_dir():
+        print(f"   ⚠ 未找到 runtime/{plat}/，不生成 runtime.zip")
+        return None
+
+    zip_path = BASE / "runtime.zip"
+    file_count = 0
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in runtime_platform_dir.rglob("*"):
+            if p.is_file():
+                z.write(p, p.relative_to(runtime_platform_dir).as_posix())
+                file_count += 1
+    print(f"   🧬 独立 runtime.zip 已生成: {plat}/ ({file_count} 文件)")
+    return zip_path
+
+
 def build_launcher_zip(version: str, changelog: str) -> Path:
     """把 launcher 基础文件打包成 zip"""
     include_patterns = [
@@ -681,9 +704,13 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
         print(f"   更新说明: {changelog}")
 
     zip_path = build_launcher_zip(version, changelog)
+    runtime_zip_path = build_runtime_zip()
     print(f"   ✓ {zip_path.name} ({zip_path.stat().st_size} bytes, "
           f"sha256={sha256(zip_path)[:12]}...)")
-          
+    if runtime_zip_path:
+        print(f"   ✓ {runtime_zip_path.name} ({runtime_zip_path.stat().st_size} bytes, "
+              f"sha256={sha256(runtime_zip_path)[:12]}...)")
+
     entry = {
         "version": version,
         "changelog": changelog,
@@ -708,9 +735,24 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
             zip_path.unlink(missing_ok=True)
             return False
         print(f"   ✓ 上传完成")
-        
-        if not _verify_upload(entry["pkg"]):
-            print(f"  ⚠ HTTP 验证失败，文件可能不可访问")
+
+        # runtime.zip 不登记到 index.json，Launcher 启动时直接访问仓库根目录。
+        if runtime_zip_path:
+            print(f"🚀 上传 {runtime_zip_path.name} → {SERVER}:{REMOTE}/")
+            try:
+                subprocess.run(
+                    ["scp", str(runtime_zip_path), f"{SERVER}:{REMOTE}/"],
+                    check=True, capture_output=True, text=True, timeout=180,
+                    encoding="utf-8", errors="replace",
+                )
+            except subprocess.CalledProcessError as e:
+                print(f"❌ runtime.zip 上传失败: {e.stderr or e.stdout or e}")
+                zip_path.unlink(missing_ok=True)
+                runtime_zip_path.unlink(missing_ok=True)
+                return False
+            print("   ✓ runtime.zip 上传完成")
+            if not _verify_upload("runtime.zip"):
+                print("  ⚠ runtime.zip HTTP 验证失败，自动下载可能仍不可用")
 
         print("📋 更新远端 index.json...")
         index, index_tmp = ensure_index()
@@ -722,6 +764,11 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
         zip_path.unlink()
     except OSError:
         pass
+    if runtime_zip_path:
+        try:
+            runtime_zip_path.unlink()
+        except OSError:
+            pass
 
     print("✅ launcher 更新发布完成！" if upload else "✅ launcher 打包完成（未上传）")
     return True

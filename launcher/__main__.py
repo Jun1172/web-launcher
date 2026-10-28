@@ -24,18 +24,18 @@ from .config import LAUNCHER_HOST, LAUNCHER_PORT, LAUNCHER_TITLE, LAUNCHER_VERSI
 from .process_manager import terminate_all
 from .http_handler import Handler
 from . import window_win32
+from . import runtime_bootstrap
 
 
 def _redirect_stdout_if_needed():
     """PyInstaller -w 模式下 stdout 可能是 None 或 GBK，emoji 会崩。
 
-    打包模式下重定向到 exe 同级的 launcher-stdout.log（UTF-8），
-    捕获第三方库（pywebview 等）的 print 输出；launcher 自身日志走
-    logging 的 RotatingFileHandler 写 launcher.log（见 config.py）。
+    打包模式下重定向到 exe 同级的 launcher.log（UTF-8），
+    捕获第三方库（pywebview 等）的 print 输出；launcher 自身日志也写入同一文件。
     开发模式不重定向。
     """
     if getattr(sys, "frozen", False):
-        log_path = Path(sys.executable).parent / "launcher-stdout.log"
+        log_path = Path(sys.executable).parent / "launcher.log"
         sys.stdout = open(log_path, "a", encoding="utf-8")
         sys.stderr = sys.stdout
 
@@ -145,6 +145,9 @@ def _start_http_server(server):
 
 def main():
     _redirect_stdout_if_needed()
+
+    # 1. 启动时检查并自动部署运行时（后台异步，不阻塞启动）
+    runtime_bootstrap.ensure_runtime()
 
     # 1.5 子应用绑定地址跟随 launcher：Popen 默认继承当前进程环境，
     #     应用端读 os.environ.get("APP_HOST", "127.0.0.1") 决定监听地址。

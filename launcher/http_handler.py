@@ -196,6 +196,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"items": out})
             return
 
+        # ── 运行时状态查询 ──
+        if path == "/api/runtime/status":
+            from . import runtime_bootstrap
+            self._json(runtime_bootstrap.get_runtime_status())
+            return
+
+        # ── 运行时手动下载触发 ──
+        if path == "/api/runtime/download":
+            from . import runtime_bootstrap
+            runtime_bootstrap.download_runtime_async()
+            self._json({"ok": True, "msg": "已启动运行时下载"})
+            return
+
         # ── 安装/升级到最新 ──
         if path == "/api/install":
             aid = q.get("id", [None])[0]

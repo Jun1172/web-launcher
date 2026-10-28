@@ -6,8 +6,8 @@
     2. 已装检测: site/ 中存在全部 dist-info(name 匹配)则跳过
     3. 优先本地 wheels: <launcher 根>/wheels/<平台标签>/ 目录
        (离线部署: U 盘/发行包自带 wheels 时零网络安装)
-    4. 在线安装: pip install --target site/ --index-url <repo>/wheels/simple
-       (repo 服务器 1.15.30.237 托管内网 pip 源; 失败回退公网 pypi)
+    4. 在线安装: 优先从 <repo>/wheels/<平台标签>/ 查找 wheel
+       (与 publish.py 上传目录一致; 失败回退公网 pypi)
     5. 用随身 runtime 的 python 跑 pip(无 runtime 用当前解释器)
 
 平台标签: win-x64 / linux-x64 / linux-arm64(鲲鹏)
@@ -25,9 +25,15 @@ PLATFORM_TAG = ("win-x64" if os.name == "nt" else
                 "linux-x64")
 
 
-def _py_index_url():
-    """repo 服务器的内网 pip 源地址(跟 packages 同源)。"""
-    return (config.REPO_URL or "").strip().rstrip("/") + "/wheels/simple"
+def _repo_wheel_url():
+    """repo 服务器的平台 wheel 目录。
+
+    publish.py 将 wheel 平铺上传到 /wheels/<平台标签>/，因此这里使用
+    pip 的 --find-links，而不是要求服务器额外维护 /wheels/simple/ 的
+    PEP 503 索引目录。
+    """
+    base = (config.REPO_URL or "").strip().rstrip("/")
+    return f"{base}/wheels/{PLATFORM_TAG}/" if base else ""
 
 
 def _pip_cmd():
@@ -130,13 +136,19 @@ def install_app_deps(app, progress_cb=None):
             if ok:
                 return True, "offline"
 
-    # 2) 在线: repo 内网源 → 公网回退
-    idxs = [(_py_index_url(), "内网源"), ("https://pypi.tuna.tsinghua.edu.cn/simple", "公网镜像")]
-    for idx, label in idxs:
+    # 2) 在线: repo 平台 wheels 目录 → 公网镜像回退
+    sources = []
+    wheel_url = _repo_wheel_url()
+    if wheel_url:
+        # publish.py 的上传布局是 /wheels/<平台标签>/*.whl。
+        # --no-index 防止 pip 因内网目录缺包而悄悄混用公网源；失败后再明确回退。
+        sources.append((["--no-index", "--find-links", wheel_url], "内网 wheels"))
+    sources.append((["--index-url", "https://pypi.tuna.tsinghua.edu.cn/simple"], "公网镜像"))
+    for source_args, label in sources:
         _cb(f"在线安装（{label}，{len(need)} 个包）")
-        ok, out = _run_pip(["install", "--target", site, "--upgrade",
-                            "--index-url", idx] + need, timeout=600)
+        ok, out = _run_pip(["install", "--target", site, "--upgrade"]
+                           + source_args + need, timeout=600)
         if ok:
-            return True, "online:" + idx.split("//", 1)[-1].split("/")[0]
+            return True, "online:" + label
 
     return False, out.strip()[-500:] if out else "安装失败"

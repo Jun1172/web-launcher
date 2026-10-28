@@ -445,6 +445,123 @@ setupWinChrome();
 setTimeout(setupWinChrome,300);
 setTimeout(setupWinChrome,1500);
 
+/* ══════════════ 运行时状态监控 ══════════════
+   检查 Python 运行时是否就绪，缺失时显示下载按钮
+   普通用户无需手动操作，首次启动自动下载
+*/
+var __runtimeStatus = {ready: null, error: null, downloading: false, progress: 0};
+
+function checkRuntimeStatus(){
+  fetch('/api/runtime/status')
+    .then(function(r){return r.json();})
+    .then(function(st){
+      __runtimeStatus = st;
+      updateRuntimeIndicator();
+    })
+    .catch(function(e){
+      console.error('[runtime] 状态检查失败:', e);
+    });
+}
+
+function updateRuntimeIndicator(){
+  var ind = document.getElementById('runtimeIndicator');
+  if(!ind){
+    console.warn('[runtime] 找不到 runtimeIndicator 元素');
+    return;
+  }
+  
+  var st = __runtimeStatus;
+  var icon, text, color, action;
+  
+  // 调试日志
+  console.log('[runtime] 状态更新:', st);
+  
+  if(st.ready === true){
+    icon = '✓';
+    text = '运行时就绪';
+    color = 'var(--success)';
+    action = null;
+    ind.style.display = 'none'; // 就绪时不显示
+  }else if(st.downloading || st.extracting){
+    icon = '⬇';
+    text = st.extracting ? '解压中' : '下载中';
+    if(st.progress > 0) text += ' ' + st.progress + '%';
+    color = 'var(--warning)';
+    action = null;
+    ind.style.display = 'flex';
+  }else if(st.error || st.ready === false){
+    icon = '⚠';
+    text = '运行时缺失';
+    color = 'var(--danger)';
+    action = 'downloadRuntime';
+    ind.style.display = 'flex';
+    console.log('[runtime] 显示"运行时缺失"，action:', action);
+  }else{
+    // ready === null，正在检查
+    icon = '?';
+    text = '检查中…';
+    color = 'var(--text-secondary)';
+    action = null;
+    ind.style.display = 'flex';
+  }
+  
+  ind.innerHTML = '<span style="color:' + color + '">' + icon + '</span> ' + text;
+  ind.style.background = 'rgba(255,255,255,0.05)';
+  ind.style.padding = '4px 10px';
+  ind.style.borderRadius = '8px';
+  ind.style.fontSize = '12px';
+  ind.style.gap = '6px';
+  ind.style.cursor = action ? 'pointer' : 'default';
+  ind.style.alignItems = 'center';
+  
+  // 清除旧的 onclick，避免重复绑定
+  ind.onclick = null;
+  
+  if(action === 'downloadRuntime'){
+    ind.onclick = function(){
+      console.log('[runtime] 用户点击下载');
+      if(confirm('Python 运行时缺失，是否立即下载？\n\n大小约 13MB，下载完成后自动部署。')){
+        downloadRuntime();
+      }
+    };
+    ind.title = '点击下载运行时';
+  }else{
+    ind.title = '';
+  }
+}
+
+function downloadRuntime(){
+  console.log('[runtime] 开始下载');
+  showToast('正在启动下载…');
+  
+  fetch('/api/runtime/download')
+    .then(function(r){return r.json();})
+    .then(function(j){
+      console.log('[runtime] 下载响应:', j);
+      if(j.ok){
+        showToast('运行时开始下载，请稍候…');
+        // 每 1 秒检查一次下载进度
+        var timer = setInterval(function(){
+          checkRuntimeStatus();
+          if(__runtimeStatus.ready === true){
+            clearInterval(timer);
+            showToast('✓ 运行时部署完成');
+          }
+        }, 1000);
+      }else{
+        showToast('启动下载失败：' + (j.msg || '未知错误'));
+      }
+    })
+    .catch(function(e){
+      console.error('[runtime] 下载失败:', e);
+      showToast('请求失败：' + e.message);
+    });
+}
+
+// 初始化时检查运行时状态，并定时更新
+setTimeout(checkRuntimeStatus, 800);
+setInterval(checkRuntimeStatus, 5000);
+
 /* ══════════════ 氛围动态层 ══════════════
    1) 星尘粒子：30 颗小星 + 8 颗大萤火，CSS 动画上浮（GPU 合成）
    2) 鼠标跟随光晕：rAF 平滑插值跟随指针

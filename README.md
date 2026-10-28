@@ -80,11 +80,18 @@
 2. **无 runtime 时回退系统 Python**——Windows：注册表 .py 文件关联 → PATH 的 python/py；POSIX：`python3`/`python`
 3. 注意：runtime 不打进 exe（静态资源按目录分发），**部署时需随目录拷贝**；漏拷不报错，自动走第 2 条
 
+**运行时自动下载**（v1.1.0 新增）：
+- Launcher 启动时自动检测全局 runtime 是否存在，**首次运行自动后台下载**（约 13MB）
+- 下载源：仓库服务器的 `/runtime.zip`（config.json 的 `repo.url` 配置）
+- 状态显示：状态栏显示"运行时就绪"或"下载中 X%"，缺失时可手动触发下载
+- 完全零操作：普通用户无需关心运行时部署，打开 Launcher 即可用
+
 | 部署场景 | 携带内容 | 目标机要求 |
 |---|---|---|
 | 常规（推荐） | exe + runtime/ + config.json + apps/ | 无 |
 | 完全离线机器 | 上述 + wheels/win-x64/ | 无 |
 | 轻量试用 | 仅 exe + config.json | Python ≥ 3.10 |
+| 自动部署 | 仅 exe + config.json | **无（运行时自动下载）** |
 
 **依赖自动安装**（声明 `deps` 的应用全程零手动）：
 - **发布**（`publish.py`）：自动 `pip download` 全部依赖 wheels → 上传到 repo 服务器 `/wheels/<平台>/`（依赖在服务器只存一份，全部应用共享去重）

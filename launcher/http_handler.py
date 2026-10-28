@@ -19,6 +19,7 @@
 import json
 import threading
 import time
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -36,7 +37,7 @@ from .repo import repo_index
 from .frontend import render_home_html, stub_html, TEMPLATES_DIR
 
 # /api/apps 允许暴露的应用字段白名单（避免把 app.json 中 env 等敏感字段发给前端）
-APP_FIELDS = ("id", "name", "icon", "color", "version", "cmd",
+APP_FIELDS = ("id", "name", "icon", "icon_file", "color", "version", "cmd",
               "port", "dock", "group", "system", "changelog",
               "released", "port_conflict")
 
@@ -117,6 +118,32 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 for a in app_registry.REGISTRY
             ])
+            return
+
+        # ── 应用图标文件 ──
+        if path == "/api/app-icon":
+            aid = q.get("id", [None])[0]
+            app = find_app(aid)
+            if not app or not app.get("icon_file"):
+                self._html("icon not found", status=404)
+                return
+            rel = Path(str(app["icon_file"]))
+            if rel.is_absolute() or ".." in rel.parts:
+                self._html("invalid icon path", status=400)
+                return
+            icon_path = Path(app["_dir"]) / rel
+            if not icon_path.is_file():
+                self._html("icon not found", status=404)
+                return
+            content_types = {
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".webp": "image/webp", ".svg": "image/svg+xml",
+            }
+            ctype = content_types.get(icon_path.suffix.lower())
+            if not ctype:
+                self._html("unsupported icon type", status=415)
+                return
+            self._binary(icon_path.read_bytes(), ctype, cache="no-store")
             return
 
         # ── 仓库应用对比 ──

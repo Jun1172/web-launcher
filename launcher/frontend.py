@@ -128,13 +128,21 @@ def _escape(s):
 def stub_html(a):
     """无独立进程的 stub 应用占位页。"""
     color = a.get("color", "#888")
-    icon = _escape(a.get("icon", "📦"))
     name = _escape(a.get("name", "应用"))
+    aid = _escape(a.get("id", ""))
+    icon_file = a.get("icon_file")
+    if icon_file:
+        icon = (f'<img src="/api/app-icon?id={aid}" alt="" '
+                f'style="width:64px;height:64px;object-fit:contain" '
+                f'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">'
+                f'<span style="display:none">{_escape(a.get("icon", "📦"))}</span>')
+    else:
+        icon = _escape(a.get("icon", "📦"))
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 {EMOJI_FONTFACE}
 body{{font-family:{FONT_STACK};display:flex;flex-direction:column;align-items:center;
 justify-content:center;height:100vh;margin:0;background:linear-gradient(160deg,{color}33,#fff)}}
-.ic{{font-size:64px}}p{{color:#999;font-size:13px}}</style></head>
+.ic{{font-size:64px;display:flex;align-items:center;justify-content:center}}p{{color:#999;font-size:13px}}</style></head>
 <body><div class="ic">{icon}</div><h2>{name}</h2><p>占位应用 · 待接入</p></body></html>"""
 
 

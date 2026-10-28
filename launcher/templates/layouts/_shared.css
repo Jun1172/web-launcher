@@ -102,6 +102,13 @@ body::after {
 #netIcon.off .slash { display:block; }
 #netIcon.off .arc { opacity:0.3; }
 
+/* App 自带图标：图片优先，Emoji 作为加载失败回退 */
+.app-icon-image {
+    width:72%; height:72%; object-fit:contain; display:inline-block;
+    user-select:none; -webkit-user-drag:none;
+}
+.sideIcon .app-icon-image, .ic .app-icon-image { width:70%; height:70%; }
+
 #batt { width:22px; height:11px; border:1.5px solid var(--text-secondary); border-radius:3px; position:relative; }
 #batt i { position:absolute; inset:1.5px; background:var(--success); border-radius:1.5px; transition:width 0.3s ease; }
 #batt b { position:absolute; right:-4px; top:2px; width:2px; height:5px; background:var(--text-secondary); border-radius:1px; }

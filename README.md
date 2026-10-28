@@ -224,7 +224,8 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 | `version` | string | ✅ | — | 语义化版本号（`1.0.0`） |
 | `cmd` | string[] | ❌ | — | 启动命令；`.py`/`.pyw`/`.pyc` 自动前缀解释器（runtime 优先），其他直接执行 |
 | `port` | int | ❌ | — | 建议端口（被占时 launcher 自动分配随机端口）；实际端口经环境变量 `LAUNCHER_APP_PORT` 传给应用（应用必须读此变量，不得硬编码）；用于 TCP 就绪探测 + iframe URL |
-| `icon` | string | ❌ | 📦 | emoji 图标 |
+| `icon` | string | ❌ | 📦 | Emoji 回退图标（图片加载失败时使用） |
+| `icon_file` | string | ❌ | 自动检测 `icon.png` | App 目录内的图标图片，支持 PNG / SVG / WEBP / JPG；图片优先显示 |
 | `color` | string | ❌ | #999 | 主题色（CSS） |
 | `group` | string | ❌ | `"user"` | 分组来源；`"system"` 受保护不可卸载 |
 | `dock` | bool | ❌ | false | 是否常驻底部 Dock（用户可用 layout.json 覆盖） |
@@ -262,7 +263,7 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 
 | 路径 | 方法 | 说明 |
 |------|------|------|
-| `/api/apps` | GET | 列出全部应用 + 运行状态（含 `running: bool` 与 `actual_port`） |
+| `/api/app-icon?id=<aid>` | GET | 返回已安装 App 的本地图片图标；无图片时返回 404，由前端回退 Emoji |
 | `/api/layout` | GET | 读取用户布局（dock / hidden / theme / layout；未保存过时 dock=null） |
 | `/api/layout` | POST | 保存布局配置（原子写 layout.json + reload_apps） |
 | `/api/ui/config` | GET | 读取 UI 开关（窗口按钮 / 动效开关与分项，源自 config.json 的 `ui` 节） |

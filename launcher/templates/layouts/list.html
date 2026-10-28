@@ -215,7 +215,7 @@ function rowEl(a){
   d.className='icon'; d.dataset.id=a.id;
   const tileCls=a.system?'tile system':'tile';
   d.innerHTML=
-    '<div class="'+tileCls+'" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"">'+a.icon+'</div>'+
+    '<div class="'+tileCls+'" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'">'+iconHtml(a,'app-icon-image')+'</div>'+
     '<div class="rowText">'+
       '<div class="name">'+esc(a.name)+'</div>'+
       '<div class="desc">'+descHtml(a)+'</div>'+
@@ -228,7 +228,7 @@ function dockEl(a){
   const d=document.createElement('div');
   d.className='icon'; d.dataset.id=a.id;
   const tileCls=a.system?'tile system':'tile';
-  d.innerHTML='<div class="'+tileCls+'" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"">'+a.icon+'</div>';
+  d.innerHTML='<div class="'+tileCls+'" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'">'+iconHtml(a,'app-icon-image')+'</div>';
   return d;
 }
 

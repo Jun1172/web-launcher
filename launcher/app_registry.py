@@ -26,6 +26,22 @@ def derive_group(meta):
     return meta.get("group") or "user"
 
 
+def detect_icon_file(meta, app_dir):
+    """返回 App 内存在的图标文件相对路径；无图片时返回 None。"""
+    candidates = []
+    declared = str(meta.get("icon_file") or "").strip()
+    if declared:
+        candidates.append(declared)
+    candidates.extend(("icon.png", "icon.svg", "icon.webp", "icon.jpg", "icon.jpeg"))
+    for name in candidates:
+        p = Path(name)
+        if p.is_absolute() or ".." in p.parts:
+            continue
+        if (app_dir / p).is_file():
+            return p.as_posix()
+    return None
+
+
 def resolve_cmd(meta, app_dir):
     """把 app.json 里的 cmd 字段解析为绝对路径参数列表（纯路径解析）。
 
@@ -87,7 +103,12 @@ def _scan_all_apps():
         meta["group"] = g
         meta["system"] = (g == "system")
         meta["cmd"] = resolve_cmd(meta, d)
-        meta["_dir"] = str(d)  # 应用目录绝对路径（process_manager 定位 site/ 用）
+        icon_file = detect_icon_file(meta, d)
+        if icon_file:
+            meta["icon_file"] = icon_file
+        else:
+            meta.pop("icon_file", None)
+        meta["_dir"] = str(d)  # 应用目录绝对路径（process_manager 定位 site/ 和图标用）
         meta.setdefault("version", "0.0.1")
         meta.setdefault("changelog", "")
         meta.setdefault("released", "")

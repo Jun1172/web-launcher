@@ -33,6 +33,13 @@ function showNotify(n){
     setTimeout(()=>d.remove(),320);}, 6000);
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function iconHtml(a, cls){
+  const fallback=esc(a.icon||'📦');
+  if(!a.icon_file) return fallback;
+  const c=cls||'app-icon-image';
+  const src='/api/app-icon?id='+encodeURIComponent(a.id);
+  return `<img class="${c}" src="${src}" alt="" draggable="false" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'"><span class="${c}-fallback" style="display:none">${fallback}</span>`;
+}
 function clUL(text){if(!text)return'<li style="opacity:.4">暂无</li>';
   return String(text).split('\n').map(s=>s.trim().replace(/^[-•*]\s*/,'')).filter(Boolean)
     .map(s=>'<li>'+esc(s)+'</li>').join('')||'<li style="opacity:.4">暂无</li>';}
@@ -70,13 +77,13 @@ async function openApp(a){
     pg=document.createElement('div');pg.className='page';
     const isBg=!a.cmd||(a.cmd&&a.port==null);
     if(isBg){
-      pg.innerHTML=`<div class="bar"><span>${esc(a.icon)} ${esc(a.name)}</span>
+      pg.innerHTML=`<div class="bar"><span>${iconHtml(a,'app-icon-image')} ${esc(a.name)}</span>
         <span><button onclick="goHome()"> 回桌面</button>
         <button onclick="killApp('${a.id}')">✕ 退出</button></span></div>
         <div class="loading">正在启动 ${esc(a.name)}…</div>
         <div style="text-align:center;margin-top:40px;color:var(--text-secondary)">${esc(a.name)} 后台运行中</div>`;
     }else{
-      pg.innerHTML=`<div class="bar"><span>${esc(a.icon)} ${esc(a.name)}</span>
+      pg.innerHTML=`<div class="bar"><span>${iconHtml(a,'app-icon-image')} ${esc(a.name)}</span>
         <span><button onclick="goHome()">🏠 回桌面</button>
         <button onclick="killApp('${a.id}')">✕ 退出</button></span></div>
         <div class="loading">正在拉起进程，等待端口就绪…</div>
@@ -141,7 +148,7 @@ function renderRecents(){
     const a=APPS.find(x=>x.id===id);if(!a)return;
     const c=document.createElement('div');c.className='card';c.dataset.id=id;
     c.innerHTML=`<button class="x">✕</button>
-      <div class="tile" style="--c:${a.color}">${a.icon}</div>
+      <div class="tile" style="--c:${a.color}">${iconHtml(a,'app-icon-image')}</div>
       <div class="name">${esc(a.name)}</div><div class="st">${a.running?'进程运行中':'页面保活中'}</div>`;
     let sy=null,mvY=0;
     c.addEventListener('pointerdown',e=>{sy=e.clientY;c.setPointerCapture(e.pointerId);c.style.transition='none';});
@@ -269,7 +276,7 @@ async function renderLayoutList(){
     const isHidden = hiddenSet.has(a.id);
     const row=document.createElement('div'); row.className='layRow';
     row.innerHTML=
-      '<span class="ic" style="color:'+(a.color||'#888')+'">'+(a.icon||'📦')+'</span>'+
+      '<span class="ic" style="color:'+(a.color||'#888')+'">'+iconHtml(a,'app-icon-image')+'</span>'+
       '<span class="nm">'+esc(a.name)+(a.system?'<small>系统</small>':'')+'</span>'+
       '<label class="cb"><input type="checkbox" data-id="'+a.id+'" data-field="dock" '+(inDock?'checked':'')+'> Dock</label>'+
       '<label class="cb hideLbl"><input type="checkbox" data-id="'+a.id+'" data-field="hidden" '+(isHidden?'checked':'')+'> <span>隐藏</span></label>';

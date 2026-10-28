@@ -299,6 +299,7 @@ header h1 { font-size:20px; font-weight:600; display:flex; align-items:center; g
 }
 .app-item:hover { background: rgba(255,255,255,0.07); border-color: var(--glass-border-hover); }
 .app-icon { font-size: 20px; flex-shrink: 0; }
+.app-icon-image { width: 24px; height: 24px; object-fit: contain; display: block; }
 .app-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .app-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .app-ver { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
@@ -398,6 +399,12 @@ const STATIC = __STATIC_JSON__;
 const LAUNCHER_URL = __LAUNCHER_URL_JSON__;
 
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function iconHtml(a){
+  const fallback=esc(a.icon||'📦');
+  if(!a.icon_file) return fallback;
+  const src=LAUNCHER_URL+'/api/app-icon?id='+encodeURIComponent(a.id);
+  return `<img class="app-icon-image" src="${src}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'"><span style="display:none">${fallback}</span>`;
+}
 function clUL(text){
   if(!text) return '<li style="opacity:.4">暂无更新说明</li>';
   return String(text).split('\n').map(s=>s.trim().replace(/^[-•*]\s*/,'')).filter(Boolean)
@@ -460,7 +467,7 @@ function renderApps(apps){
     document.getElementById(nId).textContent = list.length;
     document.getElementById(boxId).innerHTML = list.length ? list.map(a => `
       <div class="app-item" title="${esc(a.changelog || a.name)}">
-        <span class="app-icon">${a.icon || '📦'}</span>
+        <span class="app-icon">${iconHtml(a,'app-icon-image')}</span>
         <div class="app-info">
           <span class="app-name">${esc(a.name)} <span class="tag ${tagClass}">${tagName}</span></span>
           <span class="app-ver">v${esc(a.version || '?')}</span>

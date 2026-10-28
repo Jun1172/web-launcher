@@ -257,7 +257,7 @@ function tileEl(a, size, idx){
     d.style.animation='tile-pop 0.5s cubic-bezier(0.22,1.2,0.36,1) backwards '+d.style.animationDelay+
       ', tile-shimmer var(--shimmer-t) ease-in-out var(--shimmer-d) infinite';
   }
-  d.innerHTML='<span class="ic">'+a.icon+'</span><span class="name">'+esc(a.name)+'</span>';
+  d.innerHTML='<span class="ic">'+iconHtml(a,'app-icon-image')+'</span><span class="name">'+esc(a.name)+'</span>';
   return d;
 }
 

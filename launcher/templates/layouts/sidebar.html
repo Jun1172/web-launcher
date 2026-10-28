@@ -279,7 +279,7 @@ function sideItem(a){
   d.className='icon'+(a.running?' running':'');
   d.dataset.id=a.id;
   d.innerHTML=
-    '<div class="sideIcon" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"">'+a.icon+'</div>'+
+    '<div class="sideIcon" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'">'+iconHtml(a,'app-icon-image')+'</div>'+
     '<div class="sideName">'+esc(a.name)+'</div>';
   return d;
 }

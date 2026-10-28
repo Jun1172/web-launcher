@@ -144,6 +144,7 @@ body {
     border: 1px solid rgba(255,255,255,0.1);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
 }
+.app-icon-image { width:72%; height:72%; object-fit:contain; display:block; }
 .app-info { flex: 1; min-width: 0; }
 .app-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .app-tag {
@@ -358,6 +359,13 @@ async function api(path){
 
 /* ── 工具函数 ── */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function iconHtml(a, cls){
+  const fallback=esc(a.icon||'📦');
+  if(!a.icon_file) return fallback;
+  const c=cls||'app-icon-image';
+  const src=(window.LAUNCHER_URL||'')+'/api/app-icon?id='+encodeURIComponent(a.id);
+  return `<img class="${c}" src="${src}" alt="" draggable="false" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'"><span class="${c}-fallback" style="display:none">${fallback}</span>`;
+}
 function clUL(text){
   if(!text) return '<li style="opacity:.4">暂无更新说明</li>';
   return String(text).split('\n').map(s=>s.trim().replace(/^[-•*]\s*/,'')).filter(Boolean)
@@ -448,6 +456,7 @@ async function loadData(){
         installed: !!local,
         system,
         upgradable: !!local && compareVer(m.version, local.version) > 0,
+        icon_file: local ? local.icon_file : m.icon_file,
         localVersion: local ? local.version : null,
         localReleased: local ? local.released : null,
       };
@@ -566,7 +575,7 @@ function renderCard(app){
   }
   
   d.innerHTML = `
-    <div class="app-icon" style="background:linear-gradient(135deg, ${app.color}40, ${app.color}15)">${app.icon || '📦'}</div>
+    <div class="app-icon" style="background:linear-gradient(135deg, ${app.color}40, ${app.color}15)">${iconHtml(app, 'app-icon-image')}</div>
     <div class="app-info">
       <div class="app-name">${esc(app.name)} ${tag}</div>
       <div class="app-desc" title="${esc(app.changelog || '')}">${desc}</div>
@@ -585,7 +594,7 @@ function openDetail(id){
   const app = repoApps.find(a => a.id === id); if(!app) return;
   DETAIL_APP = app;
   
-  document.getElementById('dIcon').textContent = app.icon || '📦';
+  document.getElementById('dIcon').innerHTML = iconHtml(app, 'app-icon-image');
   document.getElementById('dIcon').style.background = `linear-gradient(135deg, ${app.color}40, ${app.color}15)`;
   
   const tag = document.getElementById('dTag');

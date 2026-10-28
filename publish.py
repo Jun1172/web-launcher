@@ -55,6 +55,21 @@ def app_excludes(meta):
     return ex
 
 
+def detect_app_icon_file(app_dir, meta):
+    """自动识别 App 图标文件，允许不改 app.json 也能发布图标。"""
+    names = [str(meta.get("icon_file") or "").strip(),
+             "icon.png", "icon.svg", "icon.webp", "icon.jpg", "icon.jpeg"]
+    for name in names:
+        if not name:
+            continue
+        p = Path(name)
+        if p.is_absolute() or ".." in p.parts:
+            continue
+        if (Path(app_dir) / p).is_file():
+            return p.as_posix()
+    return None
+
+
 def collect_local_module_files(app_dir):
     """收集 App 引用的仓库内本地 Python 模块，并随 App 一起打包。
 
@@ -469,7 +484,7 @@ def build_pyc_stage(app_dir, meta=None):
 def build_entry(meta, zip_path):
     """生成 index.json 里的单个 app 条目"""
     # 白名单：只保留实际生效的字段（system 已废弃，group 为分组来源）
-    FIELDS = ("id", "name", "icon", "color", "version", "changelog",
+    FIELDS = ("id", "name", "icon", "icon_file", "color", "version", "changelog",
               "port", "cmd", "dock", "group", "released", "standalone")
     entry = {k: meta[k] for k in FIELDS if k in meta}
 
@@ -503,6 +518,11 @@ def publish_one(app_dir, *, upload=True, index_override=None):
             print(f"❌ app.json 缺少字段: {required}")
             return False, None, None
 
+    icon_file = detect_app_icon_file(app_dir, meta)
+    if icon_file:
+        meta["icon_file"] = icon_file
+    else:
+        meta.pop("icon_file", None)
     zip_name = f"{meta['id']}-{meta['version']}.zip"
     
     # 核心改动：根据 group 决定图标

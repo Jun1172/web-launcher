@@ -325,8 +325,9 @@ function iconEl(a){
   const fx=(!reduce)?' fx-glow-cycle" style="--shimmer-t:'+(8+Math.random()*6).toFixed(1)+
     's;--shimmer-d:'+(-Math.random()*12).toFixed(1)+'s;--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"':
     '" style="--c:'+a.color+';--c-rgb:'+hexRgb(a.color)+'"';
-  const sys=a.system?'<div class="tile system'+fx+'>'+a.icon+'</div>':
-    '<div class="tile'+fx+'>'+a.icon+'</div>';
+  const icon=iconHtml(a,'app-icon-image');
+  const sys=a.system?'<div class="tile system'+fx+'>'+icon+'</div>':
+    '<div class="tile'+fx+'>'+icon+'</div>';
   d.innerHTML=sys+'<div class="name">'+esc(a.name)+'</div>';return d;}
 
 function gotoPage(i){

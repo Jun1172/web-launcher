@@ -24,6 +24,7 @@ python publish.py --sync              # 对照远端 packages/ 清理 index.json
   （任一上级目录名命中即排除整个子树，防止源码/产物外泄）。
 """
 import argparse
+import ast
 import datetime
 import hashlib
 import json
@@ -54,10 +55,75 @@ def app_excludes(meta):
     return ex
 
 
+def collect_local_module_files(app_dir):
+    """收集 App 引用的仓库内本地 Python 模块，并随 App 一起打包。
+
+    例如 apps/game/breakout/app.py 引用 general.shared 时，解析为
+    apps/general/shared.py，发布到 App 包内部的 general/shared.py。
+    只收集实际 import 到的 .py 与包初始化文件，不把整个兄弟 App 目录带进去。
+    """
+    app_dir = Path(app_dir).resolve()
+    app_files = {p.resolve() for p in app_dir.rglob("*.py")}
+    pending = list(app_files)
+    seen = set()
+    result = []
+
+    def add_module(module):
+        if not module or module.startswith("."):
+            return
+        parts = [p for p in module.split(".") if p]
+        if not parts:
+            return
+        base = APPS_DIR.joinpath(*parts)
+        candidates = []
+        py_file = base.with_suffix(".py")
+        if py_file.is_file():
+            candidates.append(py_file)
+        init_file = base / "__init__.py"
+        if init_file.is_file():
+            candidates.append(init_file)
+        # 让包级 import 同时带上已明确导入的子模块。
+        for p in candidates:
+            p = p.resolve()
+            if p not in seen and p not in app_files:
+                seen.add(p)
+                pending.append(p)
+                result.append(p)
+
+        # 保留父包 __init__.py（如果存在）。
+        for i in range(1, len(parts)):
+            init = APPS_DIR.joinpath(*parts[:i], "__init__.py")
+            if init.is_file():
+                init = init.resolve()
+                if init not in seen and init not in app_files:
+                    seen.add(init)
+                    pending.append(init)
+                    result.append(init)
+
+    while pending:
+        source = pending.pop()
+        try:
+            tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    add_module(alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                module = node.module or ""
+                add_module(module)
+                # from general import shared -> 还要解析 general.shared.py
+                for alias in node.names:
+                    if alias.name != "*" and module:
+                        add_module(module + "." + alias.name)
+
+    return result
+
+
 def is_excluded(rel, ex):
     """rel（相对应用目录的 Path）任一级目录或文件名命中排除集即排除。"""
     return any(part in ex for part in rel.parts)
-
 # 复用 launcher 包的公共逻辑，避免重复实现
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
@@ -149,6 +215,83 @@ def upload_app_wheels(meta):
     finally:
         shutil.rmtree(stage, ignore_errors=True)
     return True
+
+def _wheel_platform():
+    """返回 (平台目录名, pip platform 参数)。"""
+    if sys.platform == "win32":
+        return "win-x64", "win_amd64"
+    import platform
+    machine = platform.machine().lower()
+    if machine.startswith(("aarch", "arm")) and sys.maxsize > 2 ** 32:
+        return "linux-arm64", "manylinux2014_aarch64"
+    return "linux-x64", "manylinux2014_x86_64"
+
+
+def build_wheels_bundle():
+    """汇总所有 App 的 deps，生成供终端自动下载的 wheels 包。
+
+    返回 {zip, stage, platform, files}；没有任何 deps 时返回 None。
+    stage 在发布流程结束后由调用方清理。
+    """
+    deps, sources = [], {}
+    for app_dir in find_all_app_dirs():
+        try:
+            meta = json.loads((app_dir / "app.json").read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for dep in meta.get("deps") or []:
+            dep = str(dep).strip()
+            if dep and dep not in deps:
+                deps.append(dep)
+                sources.setdefault(dep, []).append(meta.get("id", app_dir.name))
+
+    if not deps:
+        print("   ℹ 没有 App 声明 deps，不生成 wheels 包")
+        return None
+
+    plat, pip_plat = _wheel_platform()
+    stage = BASE / f".launcher-wheels-{plat}"
+    if stage.exists():
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True)
+    wp = str(PUBLISH_CFG.get("wheels_python", "")).strip()
+    cmd = [sys.executable, "-m", "pip", "download",
+           "--only-binary", ":all:", "--dest", str(stage),
+           "--platform", pip_plat, "--implementation", "cp"]
+    if wp:
+        cmd += ["--python-version", wp]
+    cmd += deps
+    print(f"   📦 汇总 wheels ({plat}): {', '.join(deps)}")
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900,
+                           encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            detail = (r.stderr or r.stdout or "").strip()[-800:]
+            raise RuntimeError(f"wheels 下载失败: {detail}")
+        files = sorted(stage.glob("*.whl"))
+        if not files:
+            raise RuntimeError("未下载到任何 wheel 文件")
+        zip_path = BASE / f"wheels-{plat}.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+            for wheel in files:
+                z.write(wheel, wheel.name)
+        print(f"   ✓ wheels 包已生成: {zip_path.name} ({len(files)} 个 wheel)")
+        return {"zip": zip_path, "stage": stage, "platform": plat, "files": files}
+    except Exception:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+
+def cleanup_wheels_bundle(bundle):
+    """清理 wheels 发布临时文件。"""
+    if not bundle:
+        return
+    shutil.rmtree(bundle["stage"], ignore_errors=True)
+    try:
+        bundle["zip"].unlink()
+    except OSError:
+        pass
+
 
 def _verify_upload(pkg_path):
     """上传后通过 HTTP HEAD 验证文件是否可访问。返回 True/False。"""
@@ -381,6 +524,10 @@ def publish_one(app_dir, *, upload=True, index_override=None):
     ex = app_excludes(meta)
     app_rel = app_dir.relative_to(APPS_DIR.parent)  # 如 apps/etws/iqcache-sync
     zip_path = BASE / zip_name
+    local_module_files = collect_local_module_files(app_dir)
+    if local_module_files:
+        print("   🔗 自动收集本地模块: " + ", ".join(
+            p.relative_to(APPS_DIR).as_posix() for p in local_module_files))
     
     # ---- standalone 应用: runtime 打进应用包 ----
     runtime_dir = BASE / "runtime"
@@ -399,6 +546,13 @@ def publish_one(app_dir, *, upload=True, index_override=None):
                 if f.name.endswith(".zip.tmp") or f.name == zip_name:
                     continue
                 arcname = (app_rel / f.relative_to(src_root)) if stage else f.relative_to(APPS_DIR.parent)
+                z.write(f, arcname.as_posix())
+            
+            # 本地公共模块放进当前 App 内部，避免安装器把多个 apps/ 前缀混在一个包里。
+            # 例如 apps/general/shared.py -> apps/game/breakout/general/shared.py。
+            for f in local_module_files:
+                rel = f.relative_to(APPS_DIR)
+                arcname = app_rel / rel
                 z.write(f, arcname.as_posix())
             
             # standalone: runtime 打进应用包 (apps/<group>/<id>/runtime/<plat>/...)
@@ -705,11 +859,23 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
 
     zip_path = build_launcher_zip(version, changelog)
     runtime_zip_path = build_runtime_zip()
+    try:
+        wheels_bundle = build_wheels_bundle()
+    except Exception as e:
+        print(f"❌ 无法生成 wheels 包，取消 Launcher 发布: {e}")
+        zip_path.unlink(missing_ok=True)
+        if runtime_zip_path:
+            runtime_zip_path.unlink(missing_ok=True)
+        return False
     print(f"   ✓ {zip_path.name} ({zip_path.stat().st_size} bytes, "
           f"sha256={sha256(zip_path)[:12]}...)")
     if runtime_zip_path:
         print(f"   ✓ {runtime_zip_path.name} ({runtime_zip_path.stat().st_size} bytes, "
               f"sha256={sha256(runtime_zip_path)[:12]}...)")
+    if wheels_bundle:
+        wheels_zip_path = wheels_bundle["zip"]
+        print(f"   ✓ {wheels_zip_path.name} ({wheels_zip_path.stat().st_size} bytes, "
+              f"sha256={sha256(wheels_zip_path)[:12]}...)")
 
     entry = {
         "version": version,
@@ -754,6 +920,41 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
             if not _verify_upload("runtime.zip"):
                 print("  ⚠ runtime.zip HTTP 验证失败，自动下载可能仍不可用")
 
+        # wheels 单独上传到平台目录，并上传压缩包供新 Launcher 自动部署。
+        if wheels_bundle:
+            wheel_dir = f"{REMOTE}/wheels/{wheels_bundle['platform']}"
+            print(f"🚀 上传 {len(wheels_bundle['files'])} 个 wheels → {SERVER}:{wheel_dir}/")
+            try:
+                subprocess.run(
+                    ["ssh", SERVER, f"mkdir -p {wheel_dir}"],
+                    check=True, capture_output=True, text=True, timeout=30,
+                    encoding="utf-8", errors="replace",
+                )
+                subprocess.run(
+                    ["scp", *[str(p) for p in wheels_bundle["files"]],
+                     f"{SERVER}:{wheel_dir}/"],
+                    check=True, capture_output=True, text=True, timeout=300,
+                    encoding="utf-8", errors="replace",
+                )
+                print("   ✓ wheels 平铺文件上传完成")
+                wheels_zip = wheels_bundle["zip"]
+                print(f"🚀 上传 {wheels_zip.name} → {SERVER}:{REMOTE}/")
+                subprocess.run(
+                    ["scp", str(wheels_zip), f"{SERVER}:{REMOTE}/"],
+                    check=True, capture_output=True, text=True, timeout=180,
+                    encoding="utf-8", errors="replace",
+                )
+                print("   ✓ wheels 压缩包上传完成")
+                if not _verify_upload(wheels_zip.name):
+                    print("  ⚠ wheels 压缩包 HTTP 验证失败，自动部署可能仍不可用")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ wheels 上传失败: {e.stderr or e.stdout or e}")
+                zip_path.unlink(missing_ok=True)
+                if runtime_zip_path:
+                    runtime_zip_path.unlink(missing_ok=True)
+                cleanup_wheels_bundle(wheels_bundle)
+                return False
+
         print("📋 更新远端 index.json...")
         index, index_tmp = ensure_index()
         index["launcher"] = entry
@@ -769,6 +970,7 @@ def publish_launcher(*, upload: bool, changelog: str = ""):
             runtime_zip_path.unlink()
         except OSError:
             pass
+    cleanup_wheels_bundle(wheels_bundle)
 
     print("✅ launcher 更新发布完成！" if upload else "✅ launcher 打包完成（未上传）")
     return True

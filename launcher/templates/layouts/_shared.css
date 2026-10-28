@@ -72,6 +72,25 @@ body::after {
 }
 .sbR { display:flex; align-items:center; gap:12px; }
 
+/* ── runtime / wheels 下载提示：固定居中、内容统一左对齐 ── */
+#runtimeIndicator {
+    position:fixed; left:50%; top:46px; transform:translateX(-50%);
+    z-index:9999; display:none; width:min(460px, calc(100vw - 32px));
+    padding:12px 16px; border:1px solid var(--glass-border); border-radius:12px;
+    background:var(--toast-bg); color:var(--text-primary);
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    box-shadow:var(--toast-shadow); text-align:left; font-size:12px;
+    font-variant-numeric:tabular-nums; cursor:default;
+}
+#runtimeIndicator .rt-head,
+#runtimeIndicator .rt-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+#runtimeIndicator .rt-head { font-weight:600; line-height:18px; }
+#runtimeIndicator .rt-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#runtimeIndicator .rt-percent { color:var(--accent); flex:0 0 auto; }
+#runtimeIndicator .rt-track { height:6px; margin:8px 0 7px; overflow:hidden; border-radius:3px; background:rgba(255,255,255,0.12); }
+#runtimeIndicator .rt-fill { height:100%; width:0; border-radius:3px; background:linear-gradient(90deg,var(--accent),#a855f7); transition:width .25s ease; }
+#runtimeIndicator .rt-meta { color:var(--text-secondary); font-size:11px; font-weight:400; }
+
 #layoutBtn {
     background:transparent; border:1px solid transparent; color:var(--text-primary);
     cursor:pointer; font-size:14px; padding:4px 8px; border-radius:6px; transition:all 0.2s ease;

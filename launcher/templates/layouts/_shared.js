@@ -463,104 +463,84 @@ function checkRuntimeStatus(){
     });
 }
 
+function fmtBytes(n){
+  n=Number(n)||0;
+  if(n<1024) return n.toFixed(0)+' B';
+  if(n<1024*1024) return (n/1024).toFixed(1)+' KB';
+  if(n<1024*1024*1024) return (n/1024/1024).toFixed(1)+' MB';
+  return (n/1024/1024/1024).toFixed(2)+' GB';
+}
+function fmtRate(n){
+  n=Number(n)||0;
+  return n<1024 ? n.toFixed(0)+' B/s' : n<1024*1024 ? (n/1024).toFixed(1)+' KB/s' : (n/1024/1024).toFixed(1)+' MB/s';
+}
+function renderDownloadPanel(title,pct,done,total,speed){
+  var ind=document.getElementById('runtimeIndicator');
+  var safePct=Math.max(0,Math.min(100,Number(pct)||0));
+  ind.innerHTML='<div class="rt-head"><span class="rt-title">⬇ '+esc(title)+'</span><span class="rt-percent">'+safePct+'%</span></div>'
+    +'<div class="rt-track"><div class="rt-fill" style="width:'+safePct+'%"></div></div>'
+    +'<div class="rt-meta"><span>'+fmtBytes(done)+' / '+(Number(total)>0?fmtBytes(total):'大小未知')+'</span><span>'+fmtRate(speed)+'</span></div>';
+  ind.style.display='block';
+  ind.style.cursor='default';
+  ind.onclick=null;
+}
+
 function updateRuntimeIndicator(){
-  var ind = document.getElementById('runtimeIndicator');
-  if(!ind){
-    console.warn('[runtime] 找不到 runtimeIndicator 元素');
+  var ind=document.getElementById('runtimeIndicator');
+  if(!ind){console.warn('[runtime] 找不到 runtimeIndicator 元素');return;}
+  var st=__runtimeStatus;
+  console.log('[runtime] 状态更新:',st);
+
+  if(st.wheels_downloading){
+    renderDownloadPanel('依赖包下载中',st.wheels_progress,st.wheels_size_downloaded,st.wheels_size_total,st.wheels_speed_bps);
     return;
   }
-  
-  var st = __runtimeStatus;
-  var icon, text, color, action;
-  
-  // 调试日志
-  console.log('[runtime] 状态更新:', st);
-  
-  if(st.ready === true){
-    icon = '✓';
-    text = '运行时就绪';
-    color = 'var(--success)';
-    action = null;
-    ind.style.display = 'none'; // 就绪时不显示
-  }else if(st.downloading || st.extracting){
-    icon = '⬇';
-    text = st.extracting ? '解压中' : '下载中';
-    if(st.progress > 0) text += ' ' + st.progress + '%';
-    color = 'var(--warning)';
-    action = null;
-    ind.style.display = 'flex';
-  }else if(st.error || st.ready === false){
-    icon = '⚠';
-    text = '运行时缺失';
-    color = 'var(--danger)';
-    action = 'downloadRuntime';
-    ind.style.display = 'flex';
-    console.log('[runtime] 显示"运行时缺失"，action:', action);
-  }else{
-    // ready === null，正在检查
-    icon = '?';
-    text = '检查中…';
-    color = 'var(--text-secondary)';
-    action = null;
-    ind.style.display = 'flex';
+  if(st.downloading){
+    renderDownloadPanel('运行时下载中',st.progress,st.size_downloaded,st.size_total,st.speed_bps);
+    return;
   }
-  
-  ind.innerHTML = '<span style="color:' + color + '">' + icon + '</span> ' + text;
-  ind.style.background = 'rgba(255,255,255,0.05)';
-  ind.style.padding = '4px 10px';
-  ind.style.borderRadius = '8px';
-  ind.style.fontSize = '12px';
-  ind.style.gap = '6px';
-  ind.style.cursor = action ? 'pointer' : 'default';
-  ind.style.alignItems = 'center';
-  
-  // 清除旧的 onclick，避免重复绑定
-  ind.onclick = null;
-  
-  if(action === 'downloadRuntime'){
-    ind.onclick = function(){
-      console.log('[runtime] 用户点击下载');
-      if(confirm('Python 运行时缺失，是否立即下载？\n\n大小约 13MB，下载完成后自动部署。')){
-        downloadRuntime();
-      }
+  if(st.extracting){
+    ind.innerHTML='<div class="rt-head"><span class="rt-title">正在部署运行时…</span><span class="rt-percent">请稍候</span></div>';
+    ind.style.display='block'; ind.style.cursor='default'; ind.onclick=null;
+    return;
+  }
+  if(st.ready===true){
+    ind.style.display='none';
+    ind.onclick=null;
+    return;
+  }
+
+  if(st.error || st.ready===false){
+    ind.innerHTML='<div class="rt-head"><span class="rt-title">⚠ 运行时缺失</span><span class="rt-percent">点击重试</span></div>';
+    ind.style.display='block';
+    ind.style.cursor='pointer';
+    ind.onclick=function(){
+      if(confirm('Python 运行时缺失，是否立即下载？\n\n下载完成后会自动部署运行时和依赖包。')) downloadRuntime();
     };
-    ind.title = '点击下载运行时';
-  }else{
-    ind.title = '';
+    ind.title='点击下载运行时';
+    return;
   }
+
+  ind.innerHTML='<div class="rt-head"><span class="rt-title">正在检查运行环境…</span></div>';
+  ind.style.display='block'; ind.style.cursor='default'; ind.onclick=null;
 }
 
 function downloadRuntime(){
   console.log('[runtime] 开始下载');
-  showToast('正在启动下载…');
-  
+  showToast('正在启动运行时和依赖包下载…');
   fetch('/api/runtime/download')
     .then(function(r){return r.json();})
     .then(function(j){
-      console.log('[runtime] 下载响应:', j);
-      if(j.ok){
-        showToast('运行时开始下载，请稍候…');
-        // 每 1 秒检查一次下载进度
-        var timer = setInterval(function(){
-          checkRuntimeStatus();
-          if(__runtimeStatus.ready === true){
-            clearInterval(timer);
-            showToast('✓ 运行时部署完成');
-          }
-        }, 1000);
-      }else{
-        showToast('启动下载失败：' + (j.msg || '未知错误'));
-      }
+      console.log('[runtime] 下载响应:',j);
+      if(j.ok){showToast('下载已开始，请稍候…');}
+      else showToast('启动下载失败：'+(j.msg||'未知错误'));
     })
-    .catch(function(e){
-      console.error('[runtime] 下载失败:', e);
-      showToast('请求失败：' + e.message);
-    });
+    .catch(function(e){console.error('[runtime] 下载失败:',e);showToast('请求失败：'+e.message);});
 }
 
 // 初始化时检查运行时状态，并定时更新
-setTimeout(checkRuntimeStatus, 800);
-setInterval(checkRuntimeStatus, 5000);
+setTimeout(checkRuntimeStatus,800);
+setInterval(checkRuntimeStatus,1000);
 
 /* ══════════════ 氛围动态层 ══════════════
    1) 星尘粒子：30 颗小星 + 8 颗大萤火，CSS 动画上浮（GPU 合成）

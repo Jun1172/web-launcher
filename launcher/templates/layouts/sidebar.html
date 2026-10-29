@@ -292,3 +292,12 @@ function updateDots(){
   });
 }
 </script></body></html>
+<style>
+/* 手机端：侧边栏变全屏列表，隐藏右侧时钟区 */
+@media (max-width: 768px) {
+    #home { flex-direction: column; padding-top: 40px; }
+    #sideBar { flex: 1 1 auto; width: 100%; border-right: 0; }
+    #mainArea { display: none; }
+    .sideHead { padding: 14px 16px 12px; }
+}
+</style>

@@ -271,7 +271,7 @@ body::after {
 .themeBtn, .layoutBtn {
     flex:1; min-width:100px; padding:10px 14px; border-radius:12px; cursor:pointer;
     background: var(--glass-bg); border:1px solid var(--glass-border);
-    color: var(--text-primary); font-size:13px; font-weight:500;
+    color: var(--text-primary); font-size:13px; font-weight:500; white-space:nowrap;
     transition: all 0.2s; display:flex; align-items:center; gap:8px; justify-content:center;
 }
 .themeBtn:hover, .layoutBtn:hover { background: var(--glass-bg-hover); border-color: var(--glass-border-hover); }
@@ -420,3 +420,27 @@ body.fx-ready #fx-glow { opacity:1; }
 /* 磁贴 shimmer 同样受窗口隐藏暂停控制 */
 .icon.shimmer, .tile.fx-glow-cycle { animation-play-state: var(--fx-play, running); }
 .icon.shimmer:hover, .tile.fx-glow-cycle:hover { animation-play-state: paused; }
+
+/* ══════════════ 手机端适配（≤768px）══════════════ */
+@media (max-width: 768px) {
+    /* 状态栏收敛：只保留核心信息 */
+    #statusbar { padding: 0 12px 0 14px; font-size: 12px; }
+    .sbR { gap: 8px; }
+    #battPct { display: none; }
+
+    /* 下载提示条适配窄屏 */
+    #runtimeIndicator {
+        top: 40px; width: calc(100vw - 24px);
+        padding: 10px 12px; font-size: 11px;
+    }
+
+    /* 模态框接近全屏 */
+    .modal {
+        width: calc(100vw - 20px); max-height: 92vh;
+        padding: 18px; border-radius: 18px;
+    }
+    .themeBtn, .layoutBtn { min-width: 86px; padding: 9px 10px; font-size: 12px; }
+
+    /* 通知卡片贴边 */
+    .__notify { right: 8px; left: 8px; width: auto; max-width: none; }
+}

@@ -39,7 +39,9 @@ CONFIG = load_config()
 PORT = get_port()
 LAUNCHER_HOST = CONFIG.get("launcher", {}).get("host", "127.0.0.1")
 LAUNCHER_PORT = CONFIG.get("launcher", {}).get("port", 8000)
-LAUNCHER_URL = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}"
+# 0.0.0.0/:: 只能用于 bind，不可作为访问地址；本机服务端访问回环到 127.0.0.1
+_LAN_HOST = LAUNCHER_HOST if LAUNCHER_HOST not in ("0.0.0.0", "::", "") else "127.0.0.1"
+LAUNCHER_URL = f"http://{_LAN_HOST}:{LAUNCHER_PORT}"
 
 HTML = r"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -191,7 +193,14 @@ loadConfig();
 
 
 def render_page():
-    inject = f"<script>window.LAUNCHER_URL='{LAUNCHER_URL}';</script>"
+    # 前端优先取 referrer origin，其次 location.hostname + launcher 端口
+    inject = (
+        "<script>window.LAUNCHER_URL=(function(){"
+        "try{if(document.referrer){var u=new URL(document.referrer);if(u.origin)return u.origin;}}catch(e){}"
+        f"try{{if(location.hostname)return location.protocol+'//'+location.hostname+':{LAUNCHER_PORT}';}}catch(e){{}}"
+        f"return '{LAUNCHER_URL}';"
+        "})();</script>"
+    )
     return HTML.replace("</head>", inject + "</head>", 1)
 
 
@@ -208,4 +217,4 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()

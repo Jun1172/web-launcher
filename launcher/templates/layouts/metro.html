@@ -272,3 +272,14 @@ function updateDots(){
 /* 窗口尺寸变化时重建（保持网格列数自适应） */
 addEventListener('resize',()=>{ if(typeof buildHome==='function')buildHome(); });
 </script></body></html>
+<style>
+/* 手机端：时钟收敛、磁贴间距收紧 */
+@media (max-width: 768px) {
+    #home { padding-top: 40px; }
+    #cw { padding: 4px 16px 12px; }
+    #cwGreeting { font-size: 11px; }
+    #cwTime { font-size: 40px; }
+    #cwDate { font-size: 11.5px; margin-top: 6px; }
+    #tiles { padding: 8px 14px 70px; gap: 8px; }
+}
+</style>

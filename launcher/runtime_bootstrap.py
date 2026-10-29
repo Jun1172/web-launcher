@@ -440,8 +440,9 @@ def download_runtime_async(callback=None):
                 _runtime_status["checking"] = False
                 _runtime_status["ready"] = True
 
-            # 2. runtime 就绪后自动下载平台 wheels。
+            # 2. runtime 就绪后自动下载平台 wheels，随后巡检补装应用依赖。
             _download_wheels_if_needed()
+            repair_all_app_deps()
             if callback:
                 callback(True, None)
 
@@ -460,6 +461,36 @@ def download_runtime_async(callback=None):
 
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()
+
+
+def repair_all_app_deps():
+    """后台扫描全部已安装应用，补装缺失依赖（用户无感知）。
+
+    在 runtime/wheels 就绪后调用：覆盖"应用先于 wheels 安装导致 site/ 缺失"
+    与"重装清掉 site/"两类场景，与 open_app 的启动前自愈互补。
+    """
+    def _worker():
+        try:
+            from .app_registry import reload_apps, REGISTRY
+            from .deps_installer import install_app_deps, _installed_ok
+            reload_apps()
+            for app in REGISTRY:
+                deps = app.get("deps")
+                if not deps:
+                    continue
+                site = os.path.join(app.get("_dir") or "", "site")
+                if _installed_ok(site, deps):
+                    continue
+                safe_print(f"[INFO] {app['id']} 依赖缺失，后台自动补装…")
+                ok, msg = install_app_deps(app)
+                if ok:
+                    safe_print(f"[INFO] {app['id']} 依赖补装完成 ({msg})")
+                else:
+                    safe_print(f"[WARN] {app['id']} 依赖补装失败: {msg}")
+        except Exception as e:
+            safe_print(f"[WARN] 依赖后台巡检失败: {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def ensure_runtime():

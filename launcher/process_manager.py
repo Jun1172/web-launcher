@@ -21,7 +21,7 @@ import sys
 import threading
 import time
 
-from .config import BASE as _LAUNCHER_ROOT
+from .config import BASE as _LAUNCHER_ROOT, safe_print
 
 procs = {}         # {app_id: subprocess.Popen}
 actual_ports = {}  # {app_id: 实际监听端口（int）}
@@ -298,6 +298,22 @@ def open_app(app):
     if not app.get("cmd"):
         return {"ok": True, "running": False, "port": None}  # stub 应用，无进程
     aid = app["id"]
+
+    # 依赖自愈：声明了 deps 但 site/ 缺失时，启动前自动补装。
+    # 覆盖场景：应用重装/升级清掉 site/、wheels 下载晚于安装、用户手动删了 site/。
+    # 对用户完全无感知——点开应用时依赖已经在，不会再现 ModuleNotFoundError。
+    if app.get("deps"):
+        from .deps_installer import install_app_deps, _installed_ok
+        app_dir = app.get("_dir") or ""
+        site = os.path.join(app_dir, "site")
+        if not _installed_ok(site, app["deps"]):
+            safe_print(f"[INFO] {aid} 依赖缺失，启动前自动安装…")
+            ok, msg = install_app_deps(app)
+            if not ok:
+                return {"ok": False, "running": False, "port": None,
+                        "reason": f"依赖自动安装失败: {msg}"}
+            safe_print(f"[INFO] {aid} 依赖自动安装完成 ({msg})")
+
     with _lock:
         p = procs.get(aid)
         if p and p.poll() is None:

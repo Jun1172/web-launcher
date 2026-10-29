@@ -156,11 +156,16 @@ def main():
     import os
     os.environ["APP_HOST"] = LAUNCHER_HOST
 
+    # 访问地址与绑定地址分离：0.0.0.0/:: 只能用于 bind（监听所有网卡），
+    # 不能作为浏览器/窗口的访问地址（ERR_ADDRESS_INVALID）。
+    # 本机窗口与提示统一回环到 127.0.0.1；局域网设备用机器的实际 IP 访问。
+    display_host = LAUNCHER_HOST if LAUNCHER_HOST not in ("0.0.0.0", "::", "") else "127.0.0.1"
+
     # 1. 尝试导入 pywebview；未安装或 LAUNCHER_HTTP_ONLY 设置则回退到纯 HTTP 模式
     if os.environ.get("LAUNCHER_HTTP_ONLY"):
         has_webview = False
         safe_print("[INFO] LAUNCHER_HTTP_ONLY 已设置，使用纯 HTTP 模式")
-        safe_print(f"       浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+        safe_print(f"       浏览器访问: http://{display_host}:{LAUNCHER_PORT}/")
     else:
         try:
             import webview
@@ -168,7 +173,7 @@ def main():
         except ImportError:
             has_webview = False
             safe_print("[WARN] 未安装 pywebview，回退到纯 HTTP 模式")
-            safe_print(f"       浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+            safe_print(f"       浏览器访问: http://{display_host}:{LAUNCHER_PORT}/")
 
     # 2. 注册退出钩子（清理所有子进程）
     atexit.register(terminate_all)
@@ -180,7 +185,10 @@ def main():
     server_thread.start()
 
     # 4. 等待 HTTP 端口就绪
-    if not _wait_port_ready(LAUNCHER_HOST, LAUNCHER_PORT, timeout=8):
+    #    host=0.0.0.0 时不能用 0.0.0.0 发起 TCP 连接做自检（Windows 上不可靠，
+    #    会误判"端口未就绪"退出）；通配地址统一回环到 127.0.0.1 探测。
+    probe_host = LAUNCHER_HOST if LAUNCHER_HOST not in ("0.0.0.0", "::", "") else "127.0.0.1"
+    if not _wait_port_ready(probe_host, LAUNCHER_PORT, timeout=8):
         safe_print(f"[ERR] HTTP 端口 {LAUNCHER_PORT} 未就绪，可能被占")
         return
 
@@ -193,7 +201,7 @@ def main():
         has_webview = False
         safe_print("[WARN] 系统未安装 WebView2 Runtime, 桌面窗口不可用")
         safe_print("       安装后可恢复桌面窗口: https://developer.microsoft.com/microsoft-edge/webview2/")
-        safe_print(f"[INFO] 已切换纯 HTTP 模式, 浏览器访问: http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+        safe_print(f"[INFO] 已切换纯 HTTP 模式, 浏览器访问: http://{display_host}:{LAUNCHER_PORT}/")
 
     # 6. 无 pywebview / 无 WebView2 → 纯 HTTP 模式（阻塞主线程，Ctrl+C 退出）
     if not has_webview:
@@ -205,7 +213,7 @@ def main():
         return
 
     # 7. 有 pywebview → 创建桌面窗口
-    url = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/"
+    url = f"http://{display_host}:{LAUNCHER_PORT}/"
     # 句柄由 window_win32 通过 FindWindow 自行获取，此处无需保留返回值
     webview.create_window(
         LAUNCHER_TITLE,
@@ -235,7 +243,7 @@ def main():
     except Exception as e:
         safe_print(f"[WARN] GUI 窗口启动失败: {e}")
         safe_print("[WARN] 回退到纯 HTTP 模式，请用浏览器访问:")
-        safe_print(f"       http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/")
+        safe_print(f"       http://{display_host}:{LAUNCHER_PORT}/")
 
     if not gui_ok:
         try:

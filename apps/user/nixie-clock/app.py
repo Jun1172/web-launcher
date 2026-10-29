@@ -40,4 +40,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-	ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+	ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), Handler).serve_forever()

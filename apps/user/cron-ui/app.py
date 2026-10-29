@@ -1251,4 +1251,4 @@ if __name__ == "__main__":
     # 启动后台调度器线程（daemon，随主进程退出）
     threading.Thread(target=scheduler_loop, daemon=True).start()
     print(f"[cron-ui] 启动于 http://127.0.0.1:{PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), Handler).serve_forever()

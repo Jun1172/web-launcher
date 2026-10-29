@@ -355,3 +355,21 @@ function onSwipeH(dx){
   else gotoPage(pageIdx);
 }
 </script></body></html>
+<style>
+/* 手机端：时钟收敛、图标与 Dock 缩小 */
+@media (max-width: 768px) {
+    #home { padding-top: 40px; }
+    #cw { margin-bottom: 12px; }
+    #cwGreeting { font-size: 11px; margin-bottom: 4px; }
+    #cwTime { font-size: 46px; }
+    #cwDate { font-size: 12px; margin-top: 6px; }
+    #desktop { padding: 0 10px 10px; }
+    .screen { gap: 14px; }
+    .icon { width: 84px; }
+    .tile { width: 60px; height: 60px; font-size: 30px; border-radius: 17px; }
+    .name { font-size: 11px; }
+    #dock { gap: 10px; padding: 0 14px; height: 60px; margin-bottom: 16px; border-radius: 20px; }
+    #dock .tile { width: 46px; height: 46px; font-size: 24px; border-radius: 14px; }
+    #dots { padding: 12px 0 6px; }
+}
+</style>

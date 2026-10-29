@@ -46,7 +46,9 @@ CONFIG = load_config()
 PORT = get_port()
 LAUNCHER_HOST = CONFIG.get("launcher", {}).get("host", "127.0.0.1")
 LAUNCHER_PORT = CONFIG.get("launcher", {}).get("port", 8000)
-LAUNCHER_URL = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}"
+# 0.0.0.0/:: 只能用于 bind，不可作为访问地址；本机服务端访问回环到 127.0.0.1
+_LAN_HOST = LAUNCHER_HOST if LAUNCHER_HOST not in ("0.0.0.0", "::", "") else "127.0.0.1"
+LAUNCHER_URL = f"http://{_LAN_HOST}:{LAUNCHER_PORT}"
 
 LAUNCHER_VERSION = CONFIG.get("launcher", {}).get("version", "0.0.1")
 LAUNCHER_RELEASED = CONFIG.get("launcher", {}).get("released", "")
@@ -600,7 +602,14 @@ setInterval(load, 5000); // 5秒轮询一次动态数据，降低频率减轻负
 
 def render_page():
     static_js = json.dumps(STATIC_INFO, ensure_ascii=False)
-    launcher_url_js = json.dumps(LAUNCHER_URL, ensure_ascii=False)
+    # 前端优先取 referrer origin，其次 location.hostname + launcher 端口，最后回退配置值
+    launcher_url_js = (
+        "(function(){"
+        "try{if(document.referrer){var u=new URL(document.referrer);if(u.origin)return u.origin;}}catch(e){}"
+        f"try{{if(location.hostname)return location.protocol+'//'+location.hostname+':{LAUNCHER_PORT}';}}catch(e){{}}"
+        f"return {json.dumps(LAUNCHER_URL, ensure_ascii=False)};"
+        "})()"
+    )
     out = HTML.replace("__STATIC_JSON__", static_js, 1)
     out = out.replace("__LAUNCHER_URL_JSON__", launcher_url_js, 1)
     return out
@@ -644,4 +653,4 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"sysinfo → http://127.0.0.1:{PORT}  (Launcher v{LAUNCHER_VERSION})")
-    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()

@@ -258,4 +258,4 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"[Calculator] 启动成功，监听端口: {PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("APP_HOST", "127.0.0.1"), PORT), H).serve_forever()

@@ -50,7 +50,12 @@ HTML = r"""<!DOCTYPE html>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-background:linear-gradient(160deg,#0e1229 0%,#1c2347 100%);color:#fff;min-height:100vh;padding:16px}
+background-color:#0b1120;
+background-image:
+  radial-gradient(at 0% 0%, rgba(99,102,241,0.2) 0px, transparent 50%),
+  radial-gradient(at 100% 0%, rgba(168,85,247,0.15) 0px, transparent 50%),
+  radial-gradient(at 100% 100%, rgba(236,72,153,0.15) 0px, transparent 50%);
+background-attachment:fixed;color:#fff;min-height:100vh;padding:16px}
 .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding:0 4px}
 .header h1{font-size:20px;font-weight:600}
 .header .sub{font-size:12px;opacity:.6}

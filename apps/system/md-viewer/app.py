@@ -259,13 +259,18 @@ HTML = r"""<!DOCTYPE html>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#0d1117;--panel:#161b22;--panel2:#1f2428;--border:#30363d;
+  --bg:#0b1120;--panel:#101528;--panel2:#1a2138;--border:#26304a;
   --text:#c9d1d9;--mute:#8b949e;--heading:#f0f6fc;--link:#58a6ff;
   --accent:#ec4899;--code:#f0883e;--ok:#3fb950;
 }
 html,body{height:100%}
 body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-  background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+  background-color:var(--bg);
+background-image:
+  radial-gradient(at 0% 0%, rgba(99,102,241,0.2) 0px, transparent 50%),
+  radial-gradient(at 100% 0%, rgba(168,85,247,0.15) 0px, transparent 50%),
+  radial-gradient(at 100% 100%, rgba(236,72,153,0.15) 0px, transparent 50%);
+background-attachment:fixed;color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
 .app{display:flex;height:100vh;overflow:hidden}
 
 /* 侧栏 */

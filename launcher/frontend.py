@@ -42,10 +42,12 @@ FONT_STACK = '"EmojiFallback", system-ui, -apple-system, "PingFang SC", "Microso
 # 新增主题 = 在 themes/ 加 <id>.html + 在此注册一项。
 # swatch 是前端主题按钮的预览色块（CSS background 值）。
 THEMES = {
-    "tech-dark": {"name": "深色科技", "swatch": "linear-gradient(135deg,#0b1120,#818cf8)"},
-    "aurora-pro": {"name": "极光紫青", "swatch": "linear-gradient(135deg,#041018,#22d3ee,#a855f7)"},
-    "light-simple": {"name": "浅色简约", "swatch": "linear-gradient(135deg,#f1f5f9,#6366f1)"},
-    "macos-dock": {"name": "macOS Dock", "swatch": "linear-gradient(135deg,#1d1d1f,#007aff)"},
+    "tech-dark": {"name": "深空靛蓝", "swatch": "linear-gradient(135deg,#05070d,#6078ff)"},
+    "aurora-pro": {"name": "深空青", "swatch": "linear-gradient(135deg,#04090c,#2dc8be)"},
+    "light-simple": {"name": "晨雾浅灰", "swatch": "linear-gradient(135deg,#f4f6fa,#5a78e6)"},
+    "light-warm": {"name": "暖沙米白", "swatch": "linear-gradient(135deg,#faf7f2,#c2703d)"},
+    "light-mint": {"name": "薄荷浅青", "swatch": "linear-gradient(135deg,#f3faf7,#0e9f7a)"},
+    "macos-dock": {"name": "暗夜紫", "swatch": "linear-gradient(135deg,#0a0810,#be8cff)"},
 }
 DEFAULT_THEME = "tech-dark"
 

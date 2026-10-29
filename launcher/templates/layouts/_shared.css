@@ -19,36 +19,33 @@ body {
     user-select: none;
     /* isolation 让负 z-index 的背景伪元素绘制在 body 背景之上、内容之下 */
     isolation: isolate;
-    background-color: var(--bg-base);
+    /* 深空网格背景：极深底 + 单一方向光，背景退为衬底 */
+    background-color: var(--bg-grad-top, var(--bg-base));
     background-image:
-        radial-gradient(ellipse 90% 65% at 8% -6%, var(--bg-aurora-1) 0%, transparent 62%),
-        radial-gradient(ellipse 75% 58% at 96% 6%, var(--bg-aurora-2) 0%, transparent 58%),
-        radial-gradient(ellipse 90% 70% at 104% 102%, var(--bg-aurora-3) 0%, transparent 62%),
-        radial-gradient(ellipse 78% 62% at -6% 98%, var(--bg-aurora-4) 0%, transparent 58%),
-        radial-gradient(ellipse 150% 105% at 50% 45%, transparent 42%, var(--bg-vignette, rgba(2,6,16,0.35)) 100%);
+        radial-gradient(1200px 700px at 78% -10%, var(--bg-light-1, transparent) 0%, transparent 60%),
+        radial-gradient(900px 600px at 8% 108%, var(--bg-light-2, transparent) 0%, transparent 55%),
+        linear-gradient(180deg, var(--bg-grad-top, var(--bg-base)) 0%, var(--bg-grad-bottom, var(--bg-base)) 100%);
     background-attachment: fixed;
     transition: background-color 0.4s ease, color 0.4s ease;
 }
-/* 细腻噪点纹理：消除渐变色带，增加壁纸质感（GPU 合成，开销极低） */
+/* 细网格层：中心可见、四周淡出，带极淡噪点消除色带 */
 body::before {
     content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
-    opacity: var(--noise-opacity, 0.05);
-    mix-blend-mode: overlay;
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E"),
+        linear-gradient(var(--grid-line, rgba(255,255,255,0.028)) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line, rgba(255,255,255,0.028)) 1px, transparent 1px);
+    background-size: 160px 160px, 44px 44px, 44px 44px;
+    mask-image: radial-gradient(ellipse 90% 80% at 50% 42%, #000 30%, transparent 78%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 42%, #000 30%, transparent 78%);
 }
-/* 缓慢漂移的第二层极光：让背景"活"起来（transform 动画，不触发重绘） */
+/* 暗角：视线收拢到中央内容区 */
 body::after {
-    content: ''; position: fixed; inset: -25%; z-index: -1; pointer-events: none;
-    background:
-        radial-gradient(ellipse 55% 42% at 32% 34%, var(--aurora-drift-1, rgba(99,102,241,0.10)) 0%, transparent 65%),
-        radial-gradient(ellipse 48% 38% at 68% 62%, var(--aurora-drift-2, rgba(34,211,238,0.07)) 0%, transparent 65%);
-    animation: bgDrift 46s ease-in-out infinite alternate;
-    will-change: transform;
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(ellipse 120% 95% at 50% 45%, transparent 55%, var(--bg-vignette, rgba(0,0,0,0.4)) 100%);
 }
-@keyframes bgDrift {
-    from { transform: translate3d(-2%, -1.5%, 0); }
-    to   { transform: translate3d(2.5%, 2%, 0); }
-}
+
+
 /* 磁贴/图标入场动画（各布局通过 animation 引用） */
 @keyframes tile-pop {
     from { opacity: 0; transform: scale(0.86) translateY(14px); }
@@ -102,12 +99,16 @@ body::after {
 #netIcon.off .slash { display:block; }
 #netIcon.off .arc { opacity:0.3; }
 
-/* App 自带图标：图片优先，Emoji 作为加载失败回退 */
+/* App 自带图标：图片优先，Emoji 作为加载失败回退。
+   图片默认填满固定尺寸的容器（tile/sideIcon 等），
+   无固定尺寸的上下文（标题栏 .bar、布局编辑 .layRow）用显式尺寸，防止图片失控放大。 */
 .app-icon-image {
-    width:72%; height:72%; object-fit:contain; display:inline-block;
+    width:100%; height:100%; object-fit:contain; display:inline-block;
     user-select:none; -webkit-user-drag:none;
 }
-.sideIcon .app-icon-image, .ic .app-icon-image { width:70%; height:70%; }
+.bar .app-icon-image { width:22px; height:22px; vertical-align:-5px; }
+.layRow .app-icon-image { width:22px; height:22px; }
+.tile .app-icon-image, .sideIcon .app-icon-image { width:72%; height:72%; }
 
 #batt { width:22px; height:11px; border:1.5px solid var(--text-secondary); border-radius:3px; position:relative; }
 #batt i { position:absolute; inset:1.5px; background:var(--success); border-radius:1.5px; transition:width 0.3s ease; }

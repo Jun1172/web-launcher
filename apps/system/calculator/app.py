@@ -36,7 +36,13 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <style>
-body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f6f8ff; font-family: system-ui, sans-serif; }
+body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: system-ui, sans-serif;
+  background-color: #0b1120;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.2) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.15) 0px, transparent 50%);
+  background-attachment: fixed; }
 .calc { width: 340px; background: #fff; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: hidden; }
 .tabs { display: flex; background: #f0f2f5; }
 .tab { flex: 1; padding: 12px; border: none; background: none; font-size: 14px; cursor: pointer; color: #666; }

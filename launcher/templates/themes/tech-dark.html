@@ -1,9 +1,23 @@
 <style>
-/* ── tech-dark：深色科技风（默认·极光升级版）──
-   深空蓝黑底 + 多层极光晕染 + 暗角聚焦 + 噪点质感，
-   图标使用应用主色晕染，强调克制、统一、未来感。 */
+/* ── tech-dark：深空靛蓝（默认·深空网格设计）──
+   极深底色 + 细网格 + 单一方向光，背景退为衬底；
+   系统应用 = 靛蓝光环 + 盾标，用户应用 = 应用色微光。 */
 :root,
 [data-theme="tech-dark"] {
+    /* 深空网格背景 */
+    --bg-grad-top: #05070d;
+    --bg-grad-bottom: #070b13;
+    --bg-light-1: rgba(70, 100, 255, 0.22);
+    --bg-light-2: rgba(30, 90, 220, 0.14);
+    --grid-line: rgba(255, 255, 255, 0.028);
+    --bg-vignette: rgba(0, 0, 0, 0.50);
+
+    /* 系统应用 tile：光环 + 盾标 */
+    --sys-tile-bg: linear-gradient(165deg, rgba(120,150,255,0.16), rgba(120,150,255,0.05));
+    --sys-tile-border: rgba(130, 160, 255, 0.34);
+    --sys-icon: #c3d0ff;
+    --sys-glow: rgba(120, 150, 255, 0.10);
+
     --glass-bg: rgba(255, 255, 255, 0.05);
     --glass-bg-hover: rgba(255, 255, 255, 0.12);
     --glass-border: rgba(255, 255, 255, 0.10);
@@ -16,26 +30,19 @@
     --success: #34d399;
     --success-rgb: 52,211,153;
     --danger: #f87171;
-    --bg-base: #070b14;
-    --bg-aurora-1: rgba(79, 70, 229, 0.30);
-    --bg-aurora-2: rgba(124, 58, 237, 0.24);
-    --bg-aurora-3: rgba(236, 72, 153, 0.16);
-    --bg-aurora-4: rgba(14, 165, 233, 0.20);
-    --aurora-drift-1: rgba(99, 102, 241, 0.13);
-    --aurora-drift-2: rgba(34, 211, 238, 0.08);
-    --bg-vignette: rgba(2, 5, 14, 0.42);
-    --noise-opacity: 0.055;
-    --statusbar-bg: rgba(7, 11, 20, 0.55);
+    --bg-base: #05070d;
+    --noise-opacity: 0.05;
+    --statusbar-bg: rgba(5, 7, 13, 0.45);
     --panel-bg: rgba(15, 23, 42, 0.72);
     --page-bg: rgba(6, 10, 18, 0.96);
     --modal-mask-bg: rgba(0, 0, 0, 0.55);
     --modal-bg: rgba(15, 23, 42, 0.82);
     --toast-bg: rgba(15, 23, 42, 0.92);
-    --dock-bg: rgba(255, 255, 255, 0.07);
-    --dock-border: rgba(255, 255, 255, 0.14);
+    --dock-bg: rgba(255, 255, 255, 0.05);
+    --dock-border: rgba(255, 255, 255, 0.10);
     --clock-gradient-top: #ffffff;
     --clock-gradient-bottom: #a5b4fc;
-    --clock-glow: rgba(129, 140, 248, 0.35);
+    --clock-glow: rgba(129, 140, 248, 0.30);
     --dot-bg: rgba(255, 255, 255, 0.18);
     --dot-on-bg: #ffffff;
     --dot-on-glow: rgba(255, 255, 255, 0.45);
@@ -44,16 +51,17 @@
     --homebar-glow: rgba(255, 255, 255, 0.25);
     --scrollbar-thumb: rgba(255, 255, 255, 0.08);
     --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
-    --tile-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
-    --tile-shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.38);
-    --dock-shadow: 0 20px 50px rgba(0, 0, 0, 0.42);
+    --tile-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+    --tile-shadow-hover: 0 18px 38px rgba(0, 0, 0, 0.42);
+    --dock-shadow: 0 20px 44px rgba(0, 0, 0, 0.42);
     --modal-shadow: 0 28px 60px -12px rgba(0, 0, 0, 0.55);
     --toast-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.35);
     --layrow-bg: rgba(0, 0, 0, 0.22);
     --desktop-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.06) 100%);
     --desktop-border: rgba(255, 255, 255, 0.20);
-    --tile-radius: 18px;
-    --dock-radius: 28px;
+    --tile-radius: 19px;
+    --tile-bg: rgba(26, 30, 40, 0.50);
+    --dock-radius: 24px;
     --star-color: rgba(226, 232, 255, 0.85);
     --star-glow: rgba(165, 180, 252, 0.5);
     --pointer-glow: rgba(129, 140, 248, 0.11);

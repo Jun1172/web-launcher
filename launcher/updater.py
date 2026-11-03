@@ -90,8 +90,11 @@ rem replace the old version
 if exist "%TARGET%" del /f "%TARGET%"
 move /Y "%NEW%" "%TARGET%"
 
+rem remove the old external config so the new exe releases its bundled config
+if exist "%~dp0config.json" del /f /q "%~dp0config.json"
+
 rem delete this updater script itself
-del /f "%~f0"
+if exist "%~f0" del /f /q "%~f0"
 
 rem restart
 start "" "%TARGET%"
@@ -123,6 +126,9 @@ if [ -f "$TARGET" ]; then
 fi
 mv "$NEW" "$TARGET"
 chmod +x "$TARGET"
+
+# 删除旧配置，让新 exe/程序释放自己的 bundled config.json
+rm -f "$(dirname "$TARGET")/config.json"
 
 # 清理自身
 rm -f "$0"

@@ -45,8 +45,8 @@ THEMES = {
     "tech-dark": {"name": "深空靛蓝", "swatch": "linear-gradient(135deg,#05070d,#6078ff)"},
     "aurora-pro": {"name": "深空青", "swatch": "linear-gradient(135deg,#04090c,#2dc8be)"},
     "light-simple": {"name": "晨雾浅灰", "swatch": "linear-gradient(135deg,#f4f6fa,#5a78e6)"},
-    "light-warm": {"name": "暖沙米白", "swatch": "linear-gradient(135deg,#faf7f2,#c2703d)"},
-    "light-mint": {"name": "薄荷浅青", "swatch": "linear-gradient(135deg,#f3faf7,#0e9f7a)"},
+    "light-warm": {"name": "冰川浅蓝", "swatch": "linear-gradient(135deg,#eef7fc,#2879ad)"},
+    "light-mint": {"name": "云雾薰衣草", "swatch": "linear-gradient(135deg,#faf9fd,#7567b8)"},
     "macos-dock": {"name": "暗夜紫", "swatch": "linear-gradient(135deg,#0a0810,#be8cff)"},
 }
 DEFAULT_THEME = "tech-dark"

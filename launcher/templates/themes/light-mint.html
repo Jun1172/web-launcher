@@ -1,60 +1,60 @@
 <style>
-/* ── light-mint：薄荷浅青（浅色冷绿调·清爽纸面）──
-   第三种浅色：青绿调底 + 薄荷绿 accent，比晨雾浅灰更清透，
-   适合长时间盯屏的工作场景。 */
+/* ── light-mint：云雾薰衣草（浅色柔紫·精致桌面）──
+   白紫灰底色 + 低饱和紫蓝 accent；
+   保留浅色的干净感，避免高饱和粉紫造成视觉疲劳。 */
 [data-theme="light-mint"] {
-    --bg-grad-top: #f3faf7;
-    --bg-grad-bottom: #e6f3ec;
-    --bg-light-1: rgba(80, 190, 150, 0.14);
-    --bg-light-2: rgba(90, 170, 220, 0.10);
-    --grid-line: rgba(40, 90, 70, 0.045);
-    --bg-vignette: rgba(160, 190, 175, 0.26);
+    --bg-grad-top: #faf9fd;
+    --bg-grad-bottom: #eeeef8;
+    --bg-light-1: rgba(130, 115, 210, 0.13);
+    --bg-light-2: rgba(150, 175, 225, 0.10);
+    --grid-line: rgba(65, 55, 105, 0.042);
+    --bg-vignette: rgba(150, 145, 185, 0.22);
 
-    --glass-bg: rgba(255, 255, 255, 0.58);
-    --glass-bg-hover: rgba(255, 255, 255, 0.82);
-    --glass-border: rgba(40, 90, 70, 0.10);
-    --glass-border-hover: rgba(40, 90, 70, 0.20);
-    --text-primary: #21362c;
-    --text-secondary: #6b7f73;
-    --accent: #0e9f7a;
-    --accent-rgb: 14,159,122;
-    --accent-glow: rgba(14, 159, 122, 0.26);
-    --success: #2f9e63;
-    --success-rgb: 47,158,99;
-    --danger: #e05252;
-    --bg-base: #f3faf7;
-    --noise-opacity: 0.03;
-    --statusbar-bg: rgba(243, 250, 247, 0.68);
-    --panel-bg: rgba(238, 246, 241, 0.84);
-    --page-bg: rgba(243, 250, 247, 0.96);
-    --modal-mask-bg: rgba(30, 50, 42, 0.28);
-    --modal-bg: rgba(248, 252, 250, 0.90);
-    --toast-bg: rgba(248, 252, 250, 0.96);
-    --dock-bg: rgba(255, 255, 255, 0.68);
-    --dock-border: rgba(40, 90, 70, 0.10);
-    --clock-gradient-top: #21362c;
-    --clock-gradient-bottom: #3c5a4a;
-    --clock-glow: rgba(14, 159, 122, 0.14);
-    --dot-bg: rgba(40, 90, 70, 0.16);
-    --dot-on-bg: #0e9f7a;
-    --dot-on-glow: rgba(14, 159, 122, 0.28);
-    --homebar-bg: rgba(40, 90, 70, 0.24);
-    --homebar-hover-bg: rgba(40, 90, 70, 0.48);
-    --homebar-glow: rgba(14, 159, 122, 0.16);
-    --scrollbar-thumb: rgba(40, 90, 70, 0.14);
-    --scrollbar-thumb-hover: rgba(40, 90, 70, 0.26);
-    --tile-shadow: 0 6px 16px rgba(70, 120, 95, 0.14);
-    --tile-shadow-hover: 0 14px 28px rgba(70, 120, 95, 0.22);
-    --dock-shadow: 0 16px 38px rgba(70, 120, 95, 0.16);
-    --modal-shadow: 0 20px 40px -12px rgba(70, 120, 95, 0.22);
-    --toast-shadow: 0 12px 20px -5px rgba(70, 120, 95, 0.16);
-    --layrow-bg: rgba(255, 255, 255, 0.58);
+    --glass-bg: rgba(255, 255, 255, 0.62);
+    --glass-bg-hover: rgba(255, 255, 255, 0.84);
+    --glass-border: rgba(65, 55, 105, 0.10);
+    --glass-border-hover: rgba(65, 55, 105, 0.20);
+    --text-primary: #29283a;
+    --text-secondary: #77758c;
+    --accent: #7567b8;
+    --accent-rgb: 117,103,184;
+    --accent-glow: rgba(117, 103, 184, 0.24);
+    --success: #3b997b;
+    --success-rgb: 59,153,123;
+    --danger: #dd596b;
+    --bg-base: #faf9fd;
+    --noise-opacity: 0.025;
+    --statusbar-bg: rgba(250, 249, 253, 0.72);
+    --panel-bg: rgba(241, 240, 248, 0.88);
+    --page-bg: rgba(250, 249, 253, 0.97);
+    --modal-mask-bg: rgba(35, 30, 60, 0.27);
+    --modal-bg: rgba(250, 249, 253, 0.92);
+    --toast-bg: rgba(250, 249, 253, 0.97);
+    --dock-bg: rgba(255, 255, 255, 0.72);
+    --dock-border: rgba(65, 55, 105, 0.10);
+    --clock-gradient-top: #29283a;
+    --clock-gradient-bottom: #625a82;
+    --clock-glow: rgba(117, 103, 184, 0.13);
+    --dot-bg: rgba(65, 55, 105, 0.16);
+    --dot-on-bg: #7567b8;
+    --dot-on-glow: rgba(117, 103, 184, 0.28);
+    --homebar-bg: rgba(65, 55, 105, 0.22);
+    --homebar-hover-bg: rgba(65, 55, 105, 0.44);
+    --homebar-glow: rgba(117, 103, 184, 0.14);
+    --scrollbar-thumb: rgba(65, 55, 105, 0.13);
+    --scrollbar-thumb-hover: rgba(65, 55, 105, 0.25);
+    --tile-shadow: 0 6px 16px rgba(95, 90, 140, 0.14);
+    --tile-shadow-hover: 0 14px 28px rgba(95, 90, 140, 0.22);
+    --dock-shadow: 0 16px 38px rgba(95, 90, 140, 0.16);
+    --modal-shadow: 0 20px 40px -12px rgba(95, 90, 140, 0.22);
+    --toast-shadow: 0 12px 20px -5px rgba(95, 90, 140, 0.16);
+    --layrow-bg: rgba(255, 255, 255, 0.62);
     --tile-radius: 19px;
-    --tile-bg: rgba(255, 255, 255, 0.62);
+    --tile-bg: rgba(255, 255, 255, 0.68);
     --dock-radius: 24px;
-    --star-color: rgba(120, 155, 138, 0.55);
-    --star-glow: rgba(14, 159, 122, 0.26);
-    --pointer-glow: rgba(14, 159, 122, 0.08);
-    --ripple-color: rgba(14, 159, 122, 0.40);
+    --star-color: rgba(125, 120, 155, 0.48);
+    --star-glow: rgba(117, 103, 184, 0.24);
+    --pointer-glow: rgba(117, 103, 184, 0.07);
+    --ripple-color: rgba(117, 103, 184, 0.38);
 }
 </style>

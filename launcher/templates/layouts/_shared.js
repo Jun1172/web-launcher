@@ -188,7 +188,7 @@ function applyTheme(theme){
   if(!THEMES.some(t=>t.id===theme)) theme='tech-dark';
   currentTheme=theme;
   document.documentElement.dataset.theme=theme;
-  document.querySelectorAll('.themeBtn').forEach(b=>b.classList.toggle('active',b.dataset.theme===theme));
+  document.querySelectorAll('.themeBtn').forEach(b=>b.classList.toggle('active',b.dataset.tid===theme));
 }
 async function initTheme(){
   try{
@@ -211,7 +211,7 @@ function renderThemeList(){
   THEMES.forEach(t=>{
     const b=document.createElement('button');
     b.className='themeBtn'+(t.id===currentTheme?' active':'');
-    b.dataset.theme=t.id;
+    b.dataset.tid=t.id;
     b.innerHTML=`<span class="sw" style="background:${t.swatch}"></span>${esc(t.name)}`;
     b.onclick=()=>setTheme(t.id);
     box.appendChild(b);
@@ -233,7 +233,7 @@ function renderLayoutPicker(){
   LAYOUTS.forEach(l=>{
     const b=document.createElement('button');
     b.className='layoutBtn'+(l.id===currentLayout?' active':'');
-    b.dataset.layout=l.id;
+    b.dataset.lid=l.id;
     b.innerHTML=`<span>${l.icon||''}</span>${esc(l.name)}`;
     b.onclick=()=>setLayout(l.id);
     box.appendChild(b);

@@ -224,8 +224,8 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 | `version` | string | ✅ | — | 语义化版本号（`1.0.0`） |
 | `cmd` | string[] | ❌ | — | 启动命令；`.py`/`.pyw`/`.pyc` 自动前缀解释器（runtime 优先），其他直接执行 |
 | `port` | int | ❌ | — | 建议端口（被占时 launcher 自动分配随机端口）；实际端口经环境变量 `LAUNCHER_APP_PORT` 传给应用（应用必须读此变量，不得硬编码）；用于 TCP 就绪探测 + iframe URL |
-| `icon` | string | ❌ | 📦 | Emoji 回退图标（图片加载失败时使用） |
-| `icon_file` | string | ❌ | 自动检测 `icon.png` | App 目录内的图标图片，支持 PNG / SVG / WEBP / JPG；图片优先显示 |
+| `icon` | string | ❌ | 📦 | Emoji 回退图标；图片不存在或加载失败时显示 |
+| `icon_file` | string | ❌ | 自动查找 | App 目录内的图片图标，支持 PNG / SVG / WEBP / JPG；图片成功加载时优先显示 |
 | `color` | string | ❌ | #999 | 主题色（CSS） |
 | `group` | string | ❌ | `"user"` | 分组来源；`"system"` 受保护不可卸载 |
 | `dock` | bool | ❌ | false | 是否常驻底部 Dock（用户可用 layout.json 覆盖） |
@@ -235,8 +235,36 @@ python tools/toolbox.py --http   # 强制浏览器模式（--port 可改端口�
 | `changelog` | string | ❌ | — | 版本说明 |
 | `released` | string | ❌ | — | 发布时间（ISO 8601） |
 
-`cpp-hello` 是 C/C++ 应用的接入模板。`socket`、串口、ROS2 等原生程序可参照它：源码 + `build.{bat,sh}` + `run.py` 包装 + `app.json`。
-### 最小可用清单
+### App 图标规则
+
+Launcher 扫描应用目录时按以下顺序查找图片：
+
+```text
+1. app.json 中明确指定的 icon_file
+2. icon.png
+3. icon.svg
+4. icon.webp
+5. icon.jpg / icon.jpeg
+```
+
+找到图片后，桌面布局、Dock、最近任务、应用商店（已安装应用）和系统信息优先显示图片。图片不存在、路径不安全或加载失败时，自动回退到 `app.json` 的 `icon` Emoji；如果 `icon` 也没有，则显示默认图标 `📦`。
+
+图片必须放在 App 目录内，并且会随 App 发布包一起上传。例如：
+
+```text
+apps/user/my-app/
+├── app.json
+├── icon.svg
+└── app.py
+```
+
+推荐使用 64×64、128×128 或 256×256 的方形图片。SVG 适合线条图标，PNG 适合复杂图形。发布 App 时不需要单独上传图标：
+
+```powershell
+python publish.py apps/user/my-app
+```
+
+发布器会把 App 目录内的图标一起打包。
 
 ```json
 {

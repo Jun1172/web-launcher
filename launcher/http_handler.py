@@ -10,7 +10,8 @@
   GET /api/open?id=xxx          → 启动应用进程 + 返回 iframe URL
   GET /api/close?id=xxx         → 关闭应用进程树
   GET /api/launcher/version     → launcher 本地 + 远端版本对比
-  GET /api/launcher/update      → 执行 launcher 自更新
+  GET /api/launcher/update      → 后台启动 launcher 自更新
+  GET /api/launcher/update/progress → 查询 launcher 更新进度
   GET /api/repo/config          → 读取仓库地址/认证/SSL 配置
   POST /api/repo/config         → 保存仓库配置（原子写 config.json + reload）
   GET /stub?id=xxx              → stub 占位页
@@ -31,7 +32,7 @@ from .app_registry import find_app
 from .process_manager import open_app as pm_open_app, get_port as pm_get_port, procs
 from .app_operations import (
     do_install, do_uninstall, get_progress,
-    get_launcher_version_info, do_launcher_update,
+    get_launcher_version_info, start_launcher_update, get_launcher_update_progress,
 )
 from .repo import repo_index
 from .frontend import render_home_html, stub_html, TEMPLATES_DIR
@@ -301,8 +302,12 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── Launcher 自更新 ──
         if path == "/api/launcher/update":
-            ok, msg, restart = do_launcher_update()
-            self._json({"ok": ok, "msg": msg, "restart": restart})
+            self._json(start_launcher_update())
+            return
+
+        # ── Launcher 更新进度 ──
+        if path == "/api/launcher/update/progress":
+            self._json(get_launcher_update_progress())
             return
 
         # ── stub 占位页 ──

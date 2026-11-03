@@ -304,7 +304,8 @@ python publish.py apps/user/my-app
 | `/api/open?id=<aid>` | GET | 启动应用进程 + 返回 iframe URL |
 | `/api/close?id=<aid>` | GET | 关闭应用进程树（taskkill /F/T 或 killpg 整树强杀） |
 | `/api/launcher/version` | GET | launcher 本地 + 远端版本对比（是否可升级） |
-| `/api/launcher/update` | GET | 触发 launcher 自更新流程 |
+| `/api/launcher/update` | GET | 后台启动 launcher 自更新，返回任务启动状态 |
+| `/api/launcher/update/progress` | GET | 查询 Launcher 更新阶段和下载进度 |
 
 ### `running` 字段
 

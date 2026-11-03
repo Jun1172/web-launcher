@@ -344,6 +344,11 @@ header h1 { font-size:20px; font-weight:600; display:flex; align-items:center; g
 .status-line.ok { background: rgba(52, 211, 153, 0.1); color: var(--success); border-color: rgba(52, 211, 153, 0.2); }
 .status-line.warn { background: rgba(248, 113, 113, 0.1); color: var(--danger); border-color: rgba(248, 113, 113, 0.2); }
 .status-line.info { background: rgba(129, 140, 248, 0.1); color: var(--accent); border-color: rgba(129, 140, 248, 0.2); }
+.update-progress { margin-top:10px; }
+.update-progress .up-row { display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums; }
+.update-progress .up-track { height:7px; margin-top:8px; border-radius:4px; overflow:hidden; background:rgba(127,127,127,.18); }
+.update-progress .up-fill { height:100%; width:0; border-radius:4px; background:linear-gradient(90deg,var(--accent),#a855f7); transition:width .25s ease; }
+.update-progress .up-stage { margin-top:6px; font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 /* Toast */
 .__toast {
@@ -546,36 +551,53 @@ async function checkLauncher(){
 }
 
 async function doUpdate(){
-  if(!confirm('确认立即更新 Launcher？\n\n• 将自动备份当前文件为 .bak\n• 版本号/Changelog 更新后实时生效\n• 核心代码逻辑需手动重启 Launcher 进程才能完全生效')) return;
-  
-  const btn = document.getElementById('btnUpd');
-  const originalText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '⏳ 更新中…';
-  showToast('正在下载并校验更新…');
-  
-  try {
-    const r = await fetch(LAUNCHER_URL + '/api/launcher/update');
-    const d = await r.json();
-    
-    const st = document.getElementById('updStatus');
-    if(d.ok){
-      st.className = 'status-line ok';
-      st.innerHTML = '✅ ' + esc(d.msg || '更新成功') + 
-        (d.restart ? '<br><b style="color:var(--warning); margin-top:6px; display:inline-block;">⚠️ 建议关闭并重新打开 Launcher 以载入新代码逻辑</b>' : '');
-      showToast('更新成功！');
-      setTimeout(() => checkLauncher(), 800);
-    } else {
-      st.className = 'status-line warn';
-      st.textContent = '❌ ' + esc(d.msg || '更新失败');
-      showToast('更新失败：' + (d.msg || '未知错误'));
-      btn.disabled = false;
-      btn.textContent = originalText;
-    }
-  } catch(e) {
-    showToast('请求失败：' + e.message);
-    btn.disabled = false;
-    btn.textContent = originalText;
+  if(!confirm('确认立即更新 Launcher？\n\n更新期间会显示下载进度，完成后建议重启 Launcher。')) return;
+
+  const btn=document.getElementById('btnUpd');
+  const st=document.getElementById('updStatus');
+  btn.disabled=true;
+  btn.textContent='⏳ 更新中…';
+  st.className='status-line info';
+  st.innerHTML='<div class="update-progress">'
+    +'<div class="up-row"><b>正在准备更新</b><span id="upPct">0%</span></div>'
+    +'<div class="up-track"><div class="up-fill" id="upFill"></div></div>'
+    +'<div class="up-stage" id="upStage">正在连接仓库…</div></div>';
+  showToast('更新已开始…');
+
+  try{
+    const started=await fetch(LAUNCHER_URL+'/api/launcher/update').then(r=>r.json());
+    if(!started.ok){ throw new Error(started.msg||'无法启动更新'); }
+    const timer=setInterval(async()=>{
+      try{
+        const p=await fetch(LAUNCHER_URL+'/api/launcher/update/progress').then(r=>r.json());
+        const pct=Math.max(0,Math.min(100,Number(p.percent)||0));
+        const fill=document.getElementById('upFill');
+        const pctEl=document.getElementById('upPct');
+        const stage=document.getElementById('upStage');
+        if(fill)fill.style.width=pct+'%';
+        if(pctEl)pctEl.textContent=pct+'%';
+        if(stage)stage.textContent=p.stage||'';
+        if(p.done){
+          clearInterval(timer);
+          if(p.ok){
+            st.className='status-line ok';
+            st.innerHTML='✅ '+esc(p.msg||'更新成功')+(p.restart?'<br><b style="color:var(--warning);margin-top:6px;display:inline-block">⚠️ 建议关闭并重新打开 Launcher</b>':'');
+            btn.textContent='更新完成';
+            showToast('更新成功！');
+          }else{
+            st.className='status-line warn';
+            st.innerHTML='❌ '+esc(p.msg||'更新失败');
+            btn.disabled=false; btn.textContent='⬆️ 立即更新';
+            showToast('更新失败');
+          }
+        }
+      }catch(e){ console.error(e); }
+    },400);
+  }catch(e){
+    st.className='status-line warn';
+    st.textContent='❌ '+e.message;
+    btn.disabled=false; btn.textContent='⬆️ 立即更新';
+    showToast('更新启动失败：'+e.message);
   }
 }
 

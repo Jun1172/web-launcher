@@ -56,6 +56,85 @@ def get_progress(aid):
         return dict(p)
 
 
+_UPDATE_STATE = {
+    "running": False,
+    "percent": 0,
+    "stage": "未开始",
+    "done": False,
+    "ok": None,
+    "msg": "",
+    "restart": False,
+}
+_update_lock = threading.Lock()
+
+
+def _set_update_progress(percent, stage, done=False, ok=None, msg="", restart=False):
+    with _update_lock:
+        _UPDATE_STATE.update({
+            "running": not done,
+            "percent": max(0, min(100, int(percent))),
+            "stage": stage,
+            "done": done,
+            "ok": ok,
+            "msg": msg,
+            "restart": restart,
+        })
+
+
+def get_launcher_update_progress():
+    with _update_lock:
+        return dict(_UPDATE_STATE)
+
+
+def _download_repo_payload(path, start_percent, end_percent, progress_cb=None):
+    """流式下载 Repo 文件并报告更新进度。"""
+    resp = repo_get(path)
+    try:
+        total = int(resp.headers.get("Content-Length") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    chunks = []
+    received = 0
+    while True:
+        chunk = resp.read(65536)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        received += len(chunk)
+        if progress_cb:
+            if total:
+                pct = start_percent + int((end_percent - start_percent) * received / total)
+            else:
+                pct = start_percent
+            progress_cb(pct, f"下载更新包 {_fmt_mb(received)} / {_fmt_mb(total) if total else '?'}")
+    if progress_cb:
+        progress_cb(end_percent, "下载完成")
+    return b"".join(chunks)
+
+
+def start_launcher_update():
+    """后台启动 Launcher 更新，避免 HTTP 请求阻塞页面。"""
+    with _update_lock:
+        if _UPDATE_STATE["running"]:
+            return {"ok": True, "started": False, "msg": "更新已经在进行中"}
+        _UPDATE_STATE.update({"running": True, "percent": 1, "stage": "准备更新",
+                              "done": False, "ok": None, "msg": "", "restart": False})
+
+    def _worker():
+        try:
+            ok, msg, restart = do_launcher_update(
+                progress_cb=lambda p, s: _set_update_progress(p, s))
+            _set_update_progress(100 if ok else get_launcher_update_progress()["percent"],
+                                 "更新完成" if ok else "更新失败", done=True,
+                                 ok=ok, msg=msg, restart=restart)
+        except Exception as e:
+            _set_update_progress(get_launcher_update_progress()["percent"], "更新失败",
+                                 done=True, ok=False, msg=str(e))
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return {"ok": True, "started": True, "msg": "更新已开始"}
+
+
 # ━━━━━━━━━━━━━━━━━━━━━ 应用安装/更新 ━━━━━━━━━━━━━━━━━━━━━
 def _resolve_pkg_meta(aid):
     """在 repo_index() 中查找 app 条目最新的元数据。
@@ -239,12 +318,13 @@ def get_launcher_version_info():
     return out
 
 
-def do_launcher_update():
-    """从 Repo 下载远端 launcher 更新并执行。
+def do_launcher_update(progress_cb=None):
+    """从 Repo 下载远端 launcher 更新并执行。"""
+    def progress(percent, stage):
+        if progress_cb:
+            progress_cb(percent, stage)
 
-    frozen 模式使用 index.json 的 binary 字段替换 launcher.exe；
-    源码模式使用 pkg 字段覆盖 launcher 源码。两种模式都不再依赖 Gitee。
-    """
+    progress(3, "连接仓库")
     try:
         idx = repo_index()
     except Exception as e:
@@ -254,20 +334,23 @@ def do_launcher_update():
     if not meta:
         return False, "远端无 launcher 发布", False
 
+    progress(8, "读取发布信息")
     if getattr(sys, "frozen", False):
-        return _update_frozen_repo(meta)
-    return _update_dev(meta)
+        return _update_frozen_repo(meta, progress_cb=progress)
+    return _update_dev(meta, progress_cb=progress)
 
 
-def _update_frozen_repo(meta):
+def _update_frozen_repo(meta, progress_cb=None):
     """从 Repo 的 binary 字段下载 launcher.exe，并安排替换重启。"""
     binary = meta.get("binary")
     if not binary:
         return False, "Repo 的 launcher 条目没有 binary，无法更新已打包的 launcher.exe；请发布 exe 二进制", False
     try:
-        data = repo_get(binary).read()
+        data = _download_repo_payload(binary, 10, 72, progress_cb)
     except Exception as e:
         return False, f"下载 Repo launcher.exe 失败: {e}", False
+    if progress_cb:
+        progress_cb(78, "校验 launcher.exe")
     expected = meta.get("binary_sha256")
     if expected:
         err = verify_sha256(data, expected)
@@ -281,22 +364,27 @@ def _update_frozen_repo(meta):
     except OSError as e:
         return False, f"写入待更新 launcher 失败: {e}", False
     from . import updater
+    if progress_cb:
+        progress_cb(88, "准备替换并重启")
     ok, msg = updater.launch_self_update(new_exe)
     if ok:
         return True, f"已从 Repo 下载 launcher v{meta.get('version', '?')}，程序将自动重启", True
     return False, msg, False
 
 
-def _update_dev(meta):
+def _update_dev(meta, progress_cb=None):
     """开发态：下载 zip → 校验 → 覆盖源码 → 合并 config → reload。"""
     pkg = meta.get("pkg")
     if not pkg:
         return False, "远端无 launcher zip 包", False
     sha = meta.get("sha256")
     try:
-        data = repo_get(pkg).read()
+        data = _download_repo_payload(pkg, 10, 72, progress_cb)
     except Exception as e:
         return False, f"下载失败: {e}", False
+
+    if progress_cb:
+        progress_cb(78, "校验 launcher 包")
 
     if sha:
         err = verify_sha256(data, sha)
@@ -310,6 +398,8 @@ def _update_dev(meta):
     zip_tmp = tmp_root / "pkg.zip"
     zip_tmp.write_bytes(data)
 
+    if progress_cb:
+        progress_cb(84, "解压 launcher 包")
     try:
         with zipfile.ZipFile(zip_tmp) as z:
             if find_unsafe_names(z.namelist()):
@@ -319,6 +409,8 @@ def _update_dev(meta):
         return False, f"launcher 解压失败: {e}", False
 
     unzipped = tmp_root / "unzipped"
+    if progress_cb:
+        progress_cb(88, "覆盖 Launcher 文件")
 
     # 覆盖 launcher.py
     lp = unzipped / "launcher.py"
@@ -384,4 +476,6 @@ def _update_dev(meta):
 
     shutil.rmtree(tmp_root, ignore_errors=True)
     config.reload_config()
+    if progress_cb:
+        progress_cb(96, "刷新配置")
     return True, "✅ 更新完成，版本号已实时刷新；launcher 代码需重启生效", True

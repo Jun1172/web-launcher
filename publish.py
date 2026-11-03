@@ -18,7 +18,14 @@ Launcher 发布:
   python publish.py --launcher                         # 发布 zip、runtime、wheels
   python publish.py --launcher --build                 # 额外构建并上传 launcher.exe
   python publish.py --launcher --changelog "更新说明"  # 设置更新说明
+  python publish.py --launcher --build --auto-version # 自动递增 patch 并更新 version/released
+  python publish.py --launcher --build --auto-version --changelog "更新说明"                         # 自动版本并同步更新说明
   python publish.py --launcher --build --dry-run      # 构建但不上传，检查发布包
+
+自动版本规则:
+  当前 launcher.version 为 1.1.0 时，--auto-version 会改为 1.1.1；
+  同时更新 config.json 的 launcher.released 和 launcher.changelog，
+  并让 zip、exe、Repo index.json 使用同一版本和更新说明。
 
 Launcher 发布会自动处理:
   - launcher-<version>.zip：源码/资源 OTA 包
@@ -777,6 +784,32 @@ def sync_remote(*, dry_run=False, yes=False):
     print("✅ 同步完成")
     return True
 
+def auto_bump_launcher_version(changelog=""):
+    """将 launcher 版本自动递增一个 patch，并更新 released/changelog。
+
+    例：1.1.0 -> 1.1.1；非标准版本会明确报错，避免生成不可预期版本号。
+    config.json 会在构建前写入，保证 zip/exe/本地配置三者一致。
+    """
+    global CONFIG
+    launcher = dict(CONFIG.get("launcher") or {})
+    current = str(launcher.get("version") or "").strip()
+    parts = current.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        raise ValueError(f"当前 launcher.version 不是 x.y.z 格式: {current!r}")
+    next_version = f"{int(parts[0])}.{int(parts[1])}.{int(parts[2]) + 1}"
+    released = datetime.datetime.now().isoformat(timespec="seconds")
+    launcher["version"] = next_version
+    launcher["released"] = released
+    if changelog:
+        launcher["changelog"] = changelog
+    cfg = dict(CONFIG)
+    cfg["launcher"] = launcher
+    CONFIG_JSON.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    CONFIG.clear()
+    CONFIG.update(cfg)
+    return next_version, released
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="应用发布工具",
@@ -793,6 +826,7 @@ def parse_args():
 
   python publish.py --launcher                      发布 Launcher zip、runtime、wheels
   python publish.py --launcher --build               同时构建并上传 launcher.exe
+  python publish.py --launcher --build --auto-version 自动递增 patch 版本并更新 released
   python publish.py --launcher --changelog \"说明\"  设置 Launcher 更新说明
   python publish.py --launcher --build --dry-run    构建并打包，但不上传
 
@@ -817,6 +851,7 @@ def parse_args():
     parser.add_argument("--yes", "-y", action="store_true", help="跳过 --sync 的交互确认")
     parser.add_argument("--changelog", type=str, default="", help="Launcher 更新说明，仅配合 --launcher")
     parser.add_argument("--build", action="store_true", help="构建并上传 launcher.exe，仅配合 --launcher")
+    parser.add_argument("--auto-version", action="store_true", help="自动递增 launcher patch 版本并更新 released，仅配合 --launcher")
     return parser.parse_args()
 
 def build_runtime_zip() -> Path | None:
@@ -924,12 +959,20 @@ def build_launcher_binary(version):
     return output
 
 
-def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
+def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False, auto_version: bool = False):
     """发布 launcher 主程序更新"""
     version = CONFIG.get("launcher", {}).get("version")
     if not version:
         print("❌ config.json 的 launcher.version 未配置，无法发布 launcher 更新")
         return False
+    released = CONFIG.get("launcher", {}).get("released", "")
+    if auto_version:
+        try:
+            version, released = auto_bump_launcher_version(changelog)
+        except Exception as e:
+            print(f"❌ 自动版本递增失败: {e}")
+            return False
+        print(f"🔢 自动版本: v{version} · released={released}")
         
     print(f"🚀 Launcher 更新: v{version}")
     if changelog:
@@ -971,7 +1014,7 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False):
         "pkg": f"{PACKAGES_DIR}/{zip_path.name}",
         "size": zip_path.stat().st_size,
         "sha256": sha256(zip_path),
-        "released": datetime.datetime.now().isoformat(),
+        "released": released or datetime.datetime.now().isoformat(),
     }
     if binary_path:
         entry["binary"] = f"{PACKAGES_DIR}/{binary_path.name}"
@@ -1099,6 +1142,7 @@ def main():
             upload=not args.dry_run,
             changelog=args.changelog,
             build=args.build,
+            auto_version=args.auto_version,
         )
         sys.exit(0 if ok else 4)
 

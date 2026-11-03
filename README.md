@@ -389,8 +389,8 @@ app.json 声明了 `deps` 的应用，发布时会自动下载依赖 wheels 并�
 # 发布 Launcher 源码包、runtime 和 wheels
 python publish.py --launcher --changelog "修复 X，新增 Y"
 
-# 同时构建并上传 launcher.exe，供已打包的 Launcher 从 Repo 自更新
-python publish.py --launcher --build --changelog "修复 X，新增 Y"
+# 自动递增 patch 版本、更新 released，再构建并上传 launcher.exe
+python publish.py --launcher --build --auto-version --changelog "更新说明"
 ```
 
 通过 `GET /api/launcher/version` 查看本地/远端版本对比，`GET /api/launcher/update` 触发 OTA 更新。源码运行的 Launcher 使用 `pkg` 更新；已打包的 `launcher.exe` 使用 Repo 中的 `binary` 更新，不再依赖 Gitee。

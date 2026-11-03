@@ -44,10 +44,6 @@ DEFAULT_CONFIG = {
         "auth": None,
         "verify_ssl": False,
     },
-    "gitee": {
-        "repo": "jun626/web-launcher",
-        "release_asset": "launcher.exe",
-    },
 }
 
 
@@ -155,8 +151,8 @@ def _bootstrap_config_from_bundle():
     """打包态首次运行：把随包携带的 config.json 释放到 exe 同目录。
 
     场景：用户把 launcher.exe 单独拷到别的目录运行，该目录没有 config.json。
-    若不做这一步，程序会生成一份"出厂默认"配置，导致开发机上精心调整的
-    ui / repo / gitee / publish 等配置全部丢失（表现为"exe 不读我的配置"）。
+    若不做这一步，程序会生成一份“出厂默认”配置，导致开发机上精心调整的
+    ui / repo / publish 等配置全部丢失（表现为“exe 不读我的配置”）。
     """
     if not getattr(sys, "frozen", False):
         return
@@ -206,7 +202,6 @@ def load_config():
 CONFIG = {}
 LAUNCHER_CFG = {}
 REPO_CFG = {}
-GITEE_CFG = {}
 LAUNCHER_HOST = "127.0.0.1"
 LAUNCHER_PORT = 8000
 LAUNCHER_TITLE = "WebLauncher"
@@ -224,7 +219,7 @@ def reload_config():
 
     用于 launcher 自更新覆盖 config.json 后，使后续 API 读取到新版本号。
     """
-    global CONFIG, LAUNCHER_CFG, REPO_CFG, GITEE_CFG
+    global CONFIG, LAUNCHER_CFG, REPO_CFG
     global LAUNCHER_HOST, LAUNCHER_PORT, LAUNCHER_TITLE, LAUNCHER_VERSION
     global LAUNCHER_CHANGELOG, LAUNCHER_RELEASED
     global REPO_URL, REPO_AUTH, VERIFY_SSL, SSL_CTX
@@ -236,7 +231,6 @@ def reload_config():
     safe_print(f"[INFO] 配置版本: {CONFIG.get('launcher', {}).get('version', '0.0.1')}")
     LAUNCHER_CFG = CONFIG.get("launcher", {})
     REPO_CFG = CONFIG.get("repo", {})
-    GITEE_CFG = CONFIG.get("gitee", DEFAULT_CONFIG["gitee"])
 
     LAUNCHER_HOST = LAUNCHER_CFG.get("host", "127.0.0.1")
     LAUNCHER_PORT = int(LAUNCHER_CFG.get("port", 8000))

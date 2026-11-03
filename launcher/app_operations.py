@@ -11,7 +11,6 @@ import shutil
 import sys
 import threading
 import time
-import urllib.request
 import zipfile
 from pathlib import Path
 from . import config
@@ -288,7 +287,10 @@ def do_uninstall(aid):
 
 # ━━━━━━━━━━━━━━━━━━━━━ Launcher 版本信息 ━━━━━━━━━━━━━━━━━━━━━
 def get_launcher_version_info():
-    """读取 Launcher 版本；exe 模式查 Gitee Release，源码模式查 repo index。"""
+    """读取 Launcher 版本；从 Repo 的 index.json 读取远端版本。
+
+源码模式和编译模式共用同一套 Repo OTA 流程。
+"""
     out = {
         "local": config.LAUNCHER_VERSION,
         "remote": None,

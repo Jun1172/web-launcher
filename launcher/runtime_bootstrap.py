@@ -17,13 +17,11 @@
 import os
 import sys
 import zipfile
-import tempfile
 import threading
 import time
 from pathlib import Path
 
 from .config import BASE, REPO_URL, safe_print, SSL_CTX
-from .process_manager import runtime_python
 
 # 运行时状态
 _runtime_status = {

@@ -188,15 +188,34 @@ def sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-def _ensure_remote_dirs():
-    """确保远端 packages/ 目录存在（scp 不会自动创建多级目录）。"""
+def _remote_mkdir(remote_dir):
+    """创建远端目录；SSH 超时只告警，不让发布进程崩溃。
+
+    服务器目录通常已经存在时，mkdir 失败/超时不应阻断后续 scp。
+    如果目录实际不存在，后面的 scp 会给出明确失败信息。
+    """
     try:
-        subprocess.run(
-            ["ssh", SERVER, f"mkdir -p {REMOTE}/{PACKAGES_DIR}"],
-            check=False, capture_output=True, timeout=30,
+        r = subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=5",
+             "-o", "ServerAliveCountMax=2", SERVER, f"mkdir -p {remote_dir}"],
+            check=False, capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
         )
-    except Exception as e:
-        print(f"  ⚠ ssh mkdir 失败（可能目录已存在）: {e}")
+        if r.returncode != 0:
+            print(f"  ⚠ ssh mkdir 返回 {r.returncode}: {(r.stderr or r.stdout or '').strip()[-300:]}")
+            return False
+        return True
+    except subprocess.TimeoutExpired:
+        print(f"  ⚠ ssh mkdir 超时，继续尝试上传: {remote_dir}")
+        return False
+    except OSError as e:
+        print(f"  ⚠ ssh mkdir 无法执行，继续尝试上传: {e}")
+        return False
+
+
+def _ensure_remote_dirs():
+    """确保远端 packages/ 目录存在。"""
+    _remote_mkdir(f"{REMOTE}/{PACKAGES_DIR}")
 
 
 def upload_app_wheels(meta):
@@ -241,9 +260,7 @@ def upload_app_wheels(meta):
         return True
     print(f"   ✓ {len(whls)} 个 wheel: {', '.join(w.name for w in whls)}")
     try:
-        subprocess.run(
-            ["ssh", SERVER, f"mkdir -p {REMOTE}/wheels/{plat}"],
-            check=False, capture_output=True, timeout=30)
+        _remote_mkdir(f"{REMOTE}/wheels/{plat}")
         subprocess.run(
             ["scp", *[str(w) for w in whls], f"{SERVER}:{REMOTE}/wheels/{plat}/"],
             check=True, capture_output=True, text=True, timeout=300,
@@ -938,25 +955,39 @@ def build_launcher_zip(version: str, changelog: str) -> Path:
     return zip_path
 
 def build_launcher_binary(version):
-    """用 launcher.spec 构建待发布的 launcher.exe。"""
+    """用 launcher.spec 构建待发布的 launcher.exe。
+
+    使用独立临时 dist/work 目录，避免正在运行的 dist/launcher.exe 锁住
+    PyInstaller 的输出文件，导致 WinError 5。
+    """
     spec = BASE / "launcher.spec"
     if not spec.exists():
         raise FileNotFoundError(f"未找到构建配置: {spec}")
+    publish_dist = BASE / ".publish-dist"
+    publish_work = BASE / ".publish-build"
+    shutil.rmtree(publish_dist, ignore_errors=True)
+    shutil.rmtree(publish_work, ignore_errors=True)
     print("   🔨 构建 launcher.exe...")
-    r = subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)],
-        cwd=str(BASE), capture_output=True, text=True, timeout=900,
-        encoding="utf-8", errors="replace",
-    )
-    if r.returncode != 0:
-        raise RuntimeError((r.stderr or r.stdout or "PyInstaller 构建失败")[-1200:])
-    built = BASE / "dist" / "launcher.exe"
-    if not built.is_file():
-        raise FileNotFoundError(f"构建完成但未找到: {built}")
-    output = BASE / f"launcher-{version}.exe"
-    shutil.copy2(built, output)
-    print(f"   ✓ {output.name} ({output.stat().st_size} bytes)")
-    return output
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+             "--distpath", str(publish_dist), "--workpath", str(publish_work),
+             str(spec)],
+            cwd=str(BASE), capture_output=True, text=True, timeout=900,
+            encoding="utf-8", errors="replace",
+        )
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or r.stdout or "PyInstaller 构建失败")[-1200:])
+        built = publish_dist / "launcher.exe"
+        if not built.is_file():
+            raise FileNotFoundError(f"构建完成但未找到: {built}")
+        output = BASE / f"launcher-{version}.exe"
+        shutil.copy2(built, output)
+        print(f"   ✓ {output.name} ({output.stat().st_size} bytes)")
+        return output
+    finally:
+        shutil.rmtree(publish_dist, ignore_errors=True)
+        shutil.rmtree(publish_work, ignore_errors=True)
 
 
 def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False, auto_version: bool = False):
@@ -973,6 +1004,15 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False, 
             print(f"❌ 自动版本递增失败: {e}")
             return False
         print(f"🔢 自动版本: v{version} · released={released}")
+    elif changelog:
+        # 手动版本发布也同步本地 changelog，避免 config.json 与 Repo 说明分离。
+        launcher = dict(CONFIG.get("launcher") or {})
+        launcher["changelog"] = changelog
+        cfg = dict(CONFIG)
+        cfg["launcher"] = launcher
+        CONFIG_JSON.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        CONFIG.clear()
+        CONFIG.update(cfg)
         
     print(f"🚀 Launcher 更新: v{version}")
     if changelog:
@@ -1077,11 +1117,7 @@ def publish_launcher(*, upload: bool, changelog: str = "", build: bool = False, 
             wheel_dir = f"{REMOTE}/wheels/{wheels_bundle['platform']}"
             print(f"🚀 上传 {len(wheels_bundle['files'])} 个 wheels → {SERVER}:{wheel_dir}/")
             try:
-                subprocess.run(
-                    ["ssh", SERVER, f"mkdir -p {wheel_dir}"],
-                    check=True, capture_output=True, text=True, timeout=30,
-                    encoding="utf-8", errors="replace",
-                )
+                _remote_mkdir(wheel_dir)
                 subprocess.run(
                     ["scp", *[str(p) for p in wheels_bundle["files"]],
                      f"{SERVER}:{wheel_dir}/"],

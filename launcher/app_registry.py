@@ -8,6 +8,8 @@
 依赖 launcher.config 提供 APPS_DIR；不依赖进程/仓库模块。
 """
 import json
+import threading
+import time
 from pathlib import Path
 
 from .config import APPS_DIR, SYSTEM_APPS_DIR, safe_print
@@ -168,3 +170,54 @@ def find_app(aid):
 
 # 首次导入即刷新注册表（与原 launcher.py 行为一致）
 reload_apps()
+
+
+# ---------------------------------------------------------------- 热监听
+# 轮询 apps/ 目录签名（app.json 路径 + mtime），变更时自动 reload_apps()。
+# 前端每 2 秒轮询 /api/apps，无需推送即可看到新应用。零第三方依赖。
+
+def _apps_signature():
+    """应用清单签名：[(app.json 路径, mtime_ns), ...]（排序后比较）。
+
+    只扫约定层级 apps/<group>/<id>/app.json 与 apps/<id>/app.json，
+    不走 rglob 全树遍历，避免大 site/ 目录拖慢轮询。
+    """
+    sig = []
+    roots = [SYSTEM_APPS_DIR]
+    if APPS_DIR != SYSTEM_APPS_DIR:
+        roots.append(APPS_DIR)
+    for root in roots:
+        if not root.exists():
+            continue
+        for pattern in ("*/app.json", "*/*/app.json"):
+            for aj in root.glob(pattern):
+                try:
+                    sig.append((str(aj), aj.stat().st_mtime_ns))
+                except OSError:
+                    pass
+    return sorted(sig)
+
+
+def _start_apps_watcher(interval=2.0):
+    """后台守护线程轮询签名，变化即重载注册表（单损坏条目只告警不中断）。"""
+
+    def _loop():
+        last = _apps_signature()
+        while True:
+            time.sleep(interval)
+            try:
+                cur = _apps_signature()
+            except Exception:
+                continue
+            if cur != last:
+                last = cur
+                safe_print("[INFO] 检测到 apps/ 变更，自动重载应用列表")
+                try:
+                    reload_apps()
+                except Exception as e:
+                    safe_print(f"[WARN] 自动重载失败: {e}")
+
+    threading.Thread(target=_loop, daemon=True, name="apps-watcher").start()
+
+
+_start_apps_watcher()

@@ -45,6 +45,33 @@
       "danger": false
     },
     {
+      "id": "make.radar",
+      "name": "转换为 AESA LAUNCHER 应用",
+      "category": "build",
+      "cmd": [
+        "tools/make_radar_app.py"
+      ],
+      "desc": "把指定应用转换为 RadarDebugSoftware(AESA LAUNCHER) 格式的独立副本（manifest.json + backend/main.py shim），输出到 dist/radar-apps/。原应用零改动。位置参数传应用目录如 apps/etws/radar-viewer，或用 --group/--all。",
+      "args": [
+        {
+          "flag": "--app",
+          "placeholder": "apps/etws/radar-viewer",
+          "optional": true
+        },
+        {
+          "flag": "--out",
+          "placeholder": "输出目录，默认 dist/radar-apps",
+          "optional": true
+        },
+        {
+          "flag": "--slim",
+          "bool": true,
+          "optional": true
+        }
+      ],
+      "danger": false
+    },
+    {
       "id": "bootstrap",
       "name": "一键重建 runtime + wheels",
       "category": "rebuild",

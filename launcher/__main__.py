@@ -12,6 +12,7 @@ python -m launcher  或  python launcher.py 都会运行 main()。
 Win32 无边框窗口实现见 launcher/window_win32.py（仅 Windows 生效）。
 """
 import atexit
+import os
 import socket
 import sys
 import threading
@@ -143,8 +144,31 @@ def _start_http_server(server):
         safe_print(f"[ERR] HTTP 服务器异常: {e}")
 
 
+def _acquire_single_instance():
+    """Windows 全局互斥锁防双开（借鉴 AESA LAUNCHER 的 Global\\Mutex 方案）。
+
+    :return: (是否获取成功, 互斥锁句柄)。句柄必须保持引用直到进程退出，
+             被 GC 回收会提前释放锁。非 Windows / LAUNCHER_HTTP_ONLY（开发调试）
+             不限制，便于同机跑多个测试实例。
+    """
+    if sys.platform != "win32" or os.environ.get("LAUNCHER_HTTP_ONLY"):
+        return True, None
+    import ctypes
+    handle = ctypes.windll.kernel32.CreateMutexW(
+        None, False, "Global\\WebLauncherSingleInstance")
+    ERROR_ALREADY_EXISTS = 183
+    acquired = ctypes.windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+    return acquired, handle
+
+
 def main():
     _redirect_stdout_if_needed()
+
+    # 0. 单实例锁：已有实例在运行则直接退出，给出明确提示
+    _acquired, _mutex_handle = _acquire_single_instance()
+    if not _acquired:
+        safe_print("[ERR] 已有 WebLauncher 实例在运行，禁止双开。")
+        return
 
     # 1. 启动时检查并自动部署运行时（后台异步，不阻塞启动）
     runtime_bootstrap.ensure_runtime()
@@ -153,7 +177,6 @@ def main():
     #     应用端读 os.environ.get("APP_HOST", "127.0.0.1") 决定监听地址。
     #     桌面默认 127.0.0.1 保持不变；嵌入式把 config.json 的
     #     launcher.host 改成 0.0.0.0 后，应用也随之对局域网开放。
-    import os
     os.environ["APP_HOST"] = LAUNCHER_HOST
 
     # 访问地址与绑定地址分离：0.0.0.0/:: 只能用于 bind（监听所有网卡），
@@ -180,7 +203,15 @@ def main():
 
     # 3. 启动 HTTP 服务器（后台线程）
     addr = (LAUNCHER_HOST, LAUNCHER_PORT)
-    server = ThreadingHTTPServer(addr, Handler)
+    try:
+        server = ThreadingHTTPServer(addr, Handler)
+    except OSError as e:
+        safe_print(f"[ERR] 端口 {LAUNCHER_PORT} 无法监听（{e.strerror or e}）。")
+        safe_print("      通常是被其他程序或残留的 launcher 进程占用，任选其一处理：")
+        safe_print("        1) 运行 python tools/kill.py 清理残留进程后重试")
+        safe_print(f"        2) netstat -ano | findstr {LAUNCHER_PORT} 找到占用进程，任务管理器结束它")
+        safe_print("        3) 修改 config.json 的 launcher.port 换一个端口")
+        return 1
     server_thread = threading.Thread(target=_start_http_server, args=(server,), daemon=True)
     server_thread.start()
 

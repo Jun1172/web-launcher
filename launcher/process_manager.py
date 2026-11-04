@@ -14,6 +14,7 @@
 - 通过 LAUNCHER_APP_PORT 环境变量传给 app，app.py 读 env 用此端口
 - iframe URL 用 actual_port（不是 app.json port）
 """
+import ctypes
 import os
 import socket
 import subprocess
@@ -28,6 +29,160 @@ actual_ports = {}  # {app_id: 实际监听端口（int）}
 log_handles = {}   # {app_id: 应用输出日志文件句柄}
 _lock = threading.Lock()   # 保护 procs / actual_ports 的短操作
 _starting = set()          # 正在启动中的 app_id，防止同一应用并发重复启动
+
+# ---------------------------------------------------------------- Job Object
+# launcher 被强杀（taskkill /F、任务管理器结束进程）时 atexit 不会执行，
+# Job Object 的 KILL_ON_JOB_CLOSE 让内核自动回收整棵子进程树。纯 ctypes 实现，免 pywin32。
+
+_job_handle = None  # WINDOWS: HANDLE
+
+
+class _IO_COUNTERS(ctypes.Structure):
+    _fields_ = [(n, ctypes.c_uint64) for n in (
+        "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+        "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+
+class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_longlong),
+        ("PerJobUserTimeLimit", ctypes.c_longlong),
+        ("LimitFlags", ctypes.c_uint32),
+        ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t),
+        ("ActiveProcessLimit", ctypes.c_uint32),
+        ("Affinity", ctypes.c_size_t),
+        ("PriorityClass", ctypes.c_uint32),
+        ("SchedulingClass", ctypes.c_uint32),
+    ]
+
+
+class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("BasicLimitInformation", _JOBOBJECT_BASIC_LIMIT_INFORMATION),
+        ("IoInfo", _IO_COUNTERS),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_JobObjectExtendedLimitInformation = 9
+
+
+def _init_job_object():
+    """创建全局 Job Object（KILL_ON_JOB_CLOSE），launcher 进程存活期间持有。"""
+    global _job_handle
+    if os.name != "nt":
+        return
+    try:
+        kernel32 = ctypes.windll.kernel32
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            raise OSError("CreateJobObjectW failed")
+        info = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(
+                job, _JobObjectExtendedLimitInformation,
+                ctypes.byref(info), ctypes.sizeof(info)):
+            raise OSError("SetInformationJobObject failed")
+        _job_handle = job
+    except Exception as e:
+        _job_handle = None
+        safe_print(f"[WARN] Job Object 创建失败（launcher 被强杀时子进程可能残留）: {e}")
+
+
+def _assign_job_one(pid):
+    """把单个进程挂入 Job Object（静默失败：挂不上只是失去强杀兜底）。"""
+    if not _job_handle or not pid:
+        return
+    try:
+        PROCESS_SET_QUOTA = 0x0100
+        PROCESS_TERMINATE = 0x0001
+        kernel32 = ctypes.windll.kernel32
+        h = kernel32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
+        if not h:
+            return
+        try:
+            kernel32.AssignProcessToJobObject(_job_handle, h)
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:
+        pass
+
+
+def _process_tree_nt(pid):
+    """Toolhelp32Snapshot 枚举进程树：返回 {pid 及其全部后代}。"""
+    TH32CS_SNAPPROCESS = 0x2
+
+    class _PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", ctypes.c_uint32),
+            ("cntUsage", ctypes.c_uint32),
+            ("th32ProcessID", ctypes.c_uint32),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", ctypes.c_uint32),
+            ("cntThreads", ctypes.c_uint32),
+            ("th32ParentProcessID", ctypes.c_uint32),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", ctypes.c_uint32),
+            ("szExeFile", ctypes.c_wchar * 260),
+        ]
+
+    kernel32 = ctypes.windll.kernel32
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if snap in (0, -1):
+        return {pid}
+    try:
+        parent_map = {}
+        entry = _PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+        ok = kernel32.Process32FirstW(snap, ctypes.byref(entry))
+        while ok:
+            parent_map.setdefault(entry.th32ParentProcessID, set()).add(entry.th32ProcessID)
+            ok = kernel32.Process32NextW(snap, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snap)
+    tree, stack = {pid}, [pid]
+    while stack:
+        for child in parent_map.get(stack.pop(), ()):
+            if child not in tree:
+                tree.add(child)
+                stack.append(child)
+    return tree
+
+
+def _assign_job(pid):
+    """把进程树挂入 Job Object。
+
+    cmd 可能是转发壳（py.exe 派生 python.exe、bat 派生 cmd.exe），
+    Popen 的 pid 只是壳，真正的解释器几毫秒后才派生——异步补挂 2 秒内
+    出现的后代进程，避免竞态漏挂。
+    """
+    if os.name != "nt":
+        return
+    _assign_job_one(pid)
+    if not _job_handle:
+        return
+
+    def _follow():
+        seen = {pid}
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            try:
+                for child in _process_tree_nt(pid) - seen:
+                    seen.add(child)
+                    _assign_job_one(child)
+            except Exception:
+                pass
+            time.sleep(0.15)
+
+    threading.Thread(target=_follow, daemon=True, name="job-follow").start()
+
+
+_init_job_object()
 
 
 def _app_log_path(app):
@@ -358,6 +513,7 @@ def open_app(app):
                 return {"ok": False, "running": False, "port": None,
                         "reason": f"无法启动进程（解释器缺失或权限不足）: {e}\n命令: {launch_cmd[0]}"}
             procs[aid] = p
+            _assign_job(p.pid)   # 挂入 Job Object：launcher 被强杀时内核兜底回收
 
             # 轮询端口就绪，同时检查进程是否已崩溃
             end = time.time() + 6
@@ -387,6 +543,7 @@ def open_app(app):
                 return {"ok": False, "running": False, "port": None,
                         "reason": f"无法启动进程（解释器缺失或权限不足）: {e}\n命令: {launch_cmd[0]}"}
             procs[aid] = p
+            _assign_job(p.pid)   # 挂入 Job Object：launcher 被强杀时内核兜底回收
             time.sleep(0.5)
             if p.poll() is None:
                 return {"ok": True, "running": True, "port": None}  # 进程存活
@@ -430,12 +587,56 @@ def _kill_tree_posix(pid):
             pass
 
 
-def close_app(aid):
-    """关闭单个应用进程 + 进程树，确保子进程（如 ROS 节点）一并终止，避免孤儿残留。
+def _close_windows_nt(pid):
+    """温和关闭：向进程树所有可见顶层窗口发送 WM_CLOSE，给应用 flush/保存的机会。
 
-    应用可能通过 subprocess 起一整条子进程链（如 shell → pixi → python → ROS 节点）。
-    若只 terminate 主进程、主进程一退出就跳过强杀，子节点会被引用为孤儿继续运行。
-    因此在 Windows 上直接 taskkill /F /T（连根带支整体杀），POSIX 上 SIGKILL 整个进程组。
+    :return: 是否至少向一个窗口发送成功（False = 没有窗口或发送失败，
+             调用方应直接走强杀路径）
+    """
+    try:
+        user32 = ctypes.windll.user32
+        targets = _process_tree_nt(pid)
+        hits = []
+        # HWND/LPARAM 用 ssize_t 保证 64 位下指针宽度正确
+        WNDENUMPROC = ctypes.WINFUNCTYPE(
+            ctypes.c_bool, ctypes.c_ssize_t, ctypes.c_ssize_t)
+
+        def _enum(hwnd, _lparam):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            owner = ctypes.c_uint32(0)
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value in targets:
+                hits.append(hwnd)
+            return True
+
+        user32.EnumWindows(WNDENUMPROC(_enum), 0)
+        sent = False
+        for h in hits:
+            if user32.PostMessageW(h, 0x0010, 0, 0):  # WM_CLOSE
+                sent = True
+        return sent
+    except Exception:
+        return False
+
+
+def _wait_exit(p, timeout):
+    """轮询等待进程退出，返回是否已退出。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if p.poll() is not None:
+            return True
+        time.sleep(0.1)
+    return p.poll() is not None
+
+
+def close_app(aid):
+    """关闭单个应用进程 + 进程树（两段式）。
+
+    第一段温和：Windows 向进程树窗口发 WM_CLOSE（应用有机会 flush/保存），
+    POSIX 发 SIGTERM；等待 3 秒。
+    第二段强杀：仍未退出则 Windows taskkill /F /T 连根带支、POSIX SIGKILL 整个进程组，
+    避免孤儿残留（应用可能通过 subprocess 起一整条子进程链）。
     """
     with _lock:
         actual_ports.pop(aid, None)  # 清除端口映射
@@ -451,8 +652,16 @@ def close_app(aid):
         return
     root = p.pid
     if os.name == "nt":
+        if _close_windows_nt(root) and _wait_exit(p, 3.0):
+            return
         _kill_tree_nt(root)   # taskkill /F /T 一次性终止整棵进程树
     else:
+        try:
+            os.killpg(root, 15)  # SIGTERM
+        except Exception:
+            pass
+        if _wait_exit(p, 3.0):
+            return
         _kill_tree_posix(root)  # 负 pid 给进程组发 SIGKILL，连同子进程
     # reap 根进程，避免僵尸
     try:

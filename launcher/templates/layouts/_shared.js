@@ -257,7 +257,7 @@ async function renderLayoutList(){
   let apps, ly;
   try{
     [apps, ly] = await Promise.all([
-      fetch('/api/apps').then(r=>r.json()),
+      fetch('/api/apps?all=1').then(r=>r.json()),   // 全量(含已隐藏): 否则隐藏项消失、再保存会被洗掉复活
       fetch('/api/layout').then(r=>r.json())
     ]);
   }catch(e){ box.innerHTML='<div style="padding:14px;color:var(--danger)">加载失败：'+esc(e.message)+'</div>'; return; }
@@ -282,6 +282,14 @@ async function renderLayoutList(){
       '<label class="cb hideLbl"><input type="checkbox" data-id="'+a.id+'" data-field="hidden" '+(isHidden?'checked':'')+'> <span>隐藏</span></label>';
     box.appendChild(row);
   });
+}
+
+/* 全部隐藏/全部显示: 只批量切换「隐藏」勾选并立即保存;
+ * Dock 不受此按钮管理, 仍由列表里的 Dock 勾选单独控制 */
+async function toggleAllHidden(hide){
+  document.querySelectorAll('#layList input[type=checkbox][data-field="hidden"]')
+    .forEach(cb=>{ cb.checked=hide; });
+  await saveLayout();
 }
 
 async function saveLayout(){

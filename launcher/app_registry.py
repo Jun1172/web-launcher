@@ -18,6 +18,7 @@ from .config import APPS_DIR, SYSTEM_APPS_DIR, safe_print
 system_apps = []
 user_apps = []
 REGISTRY = []
+all_apps = []   # 未过滤全量(含 hidden 应用), 供布局设置弹窗展示/恢复隐藏项
 
 
 def derive_group(meta):
@@ -123,6 +124,8 @@ def rebuild_registry():
     global REGISTRY
     REGISTRY = system_apps + user_apps
     _mark_port_conflicts(REGISTRY)
+    if all_apps:
+        _mark_port_conflicts(all_apps)  # 全量快照同步打标(布局弹窗一致展示)
 
 
 def _mark_port_conflicts(apps):
@@ -152,9 +155,10 @@ def reload_apps():
     再调用 layout.apply_layout 覆盖 dock / 过滤 hidden
     （layout.json 是用户级覆盖层，app.json 的 dock 是出厂默认）。
     """
-    global system_apps, user_apps
+    global system_apps, user_apps, all_apps
     from . import layout  # 延迟导入避免循环
     apps = _scan_all_apps()
+    all_apps = list(apps)   # 全量快照(过滤前): 布局弹窗经 /api/apps?all=1 消费
     system_apps = layout.apply_layout([a for a in apps if a["system"]])
     user_apps = layout.apply_layout([a for a in apps if not a["system"]])
     rebuild_registry()

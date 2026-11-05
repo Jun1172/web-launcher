@@ -111,13 +111,16 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── 应用列表（带运行状态 + 实际端口）──
         if path == "/api/apps":
+            # ?all=1 → 全量列表(含已隐藏应用): 布局设置弹窗需展示隐藏项以便恢复
+            include_hidden = q.get("all", ["0"])[0] in ("1", "true")
+            src = app_registry.all_apps if include_hidden else app_registry.REGISTRY
             self._json([
                 {k: a[k] for k in APP_FIELDS if k in a} | {
                     "running": (procs.get(a["id"]) is not None
                                 and procs[a["id"]].poll() is None),
                     "actual_port": pm_get_port(a["id"]),
                 }
-                for a in app_registry.REGISTRY
+                for a in src
             ])
             return
 

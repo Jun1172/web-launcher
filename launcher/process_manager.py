@@ -107,8 +107,9 @@ def _assign_job_one(pid):
             return
         try:
             ok = kernel32.AssignProcessToJobObject(_job_handle, h)
-            if not ok:  # DEBUG-TEMP: 挂载失败取证
-                safe_print(f"[DEBUG] AssignProcessToJobObject({pid}) 失败 lasterr={ctypes.GetLastError()}")
+            if not ok:
+                # 挂载失败 = 失去强杀兜底，值得留痕（此前静默吞掉，排障无据）
+                safe_print(f"[WARN] AssignProcessToJobObject({pid}) 失败 lasterr={ctypes.GetLastError()}")
             elif os.environ.get("LAUNCHER_JOB_DEBUG"):
                 safe_print(f"[DEBUG] AssignProcessToJobObject({pid}) OK")
         finally:

@@ -144,6 +144,43 @@ def _start_http_server(server):
         safe_print(f"[ERR] HTTP 服务器异常: {e}")
 
 
+def _autostart_worker():
+    """launcher 启动后串行拉起 layout.json autostart 列表中的应用（静默后台）。
+
+    - 复用 open_app（点卡片同一条链路）：端口分配/依赖自愈/日志/进程守护全继承
+    - 只拉进程不开页面（用户点卡片才进入）
+    - 失败仅打日志不重试、不阻塞：下次启动配置仍在，照常再试
+    - 串行 + 间隔，避免并发抢端口/抢 IO；全部在守护线程中，不影响 launcher 就绪
+    """
+    import time
+    from . import layout as _layout
+    from . import app_registry as _reg
+    from .process_manager import open_app
+    try:
+        ids = _layout.load_layout().get("autostart") or []
+    except Exception:
+        return
+    if not ids:
+        return
+    safe_print(f"[AUTO] 自启 {len(ids)} 个应用: {', '.join(ids)}")
+    for aid in ids:
+        # 用全量快照查（REGISTRY 过滤了 hidden，自启应用允许同时被隐藏）
+        a = next((x for x in _reg.all_apps if x["id"] == aid), None) \
+            or _reg.find_app(aid)
+        if not a:
+            safe_print(f"[AUTO] 跳过自启: 未找到应用 {aid}")
+            continue
+        try:
+            r = open_app(a)
+            if r.get("ok"):
+                safe_print(f"[AUTO] 自启 {aid} OK (port={r.get('port')})")
+            else:
+                safe_print(f"[AUTO] 自启 {aid} 失败: {r.get('reason')}")
+        except Exception as e:
+            safe_print(f"[WARN] 自启 {aid} 异常: {e}")
+        time.sleep(0.4)
+
+
 def _acquire_single_instance():
     """Windows 全局互斥锁防双开（借鉴 AESA LAUNCHER 的 Global\\Mutex 方案）。
 
@@ -224,6 +261,9 @@ def main():
         return
 
     safe_print(f"[READY] {LAUNCHER_TITLE} v{LAUNCHER_VERSION} 已就绪")
+
+    # 4.5 自启应用：后台守护线程串行拉起（layout.json autostart 列表）
+    threading.Thread(target=_autostart_worker, daemon=True).start()
 
     # 5. WebView2 预检: 未安装则桌面窗口必然空白, 静默转纯 HTTP 模式(不开窗口)。
     #    必须放在"纯 HTTP 分支"之前：置 False 后由下面的分支统一接管，

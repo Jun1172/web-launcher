@@ -200,6 +200,8 @@ class Handler(BaseHTTPRequestHandler):
                 "hidden": ly.get("hidden", []),
                 "theme": ly.get("theme", DEFAULT_THEME),
                 "layout": ly.get("layout", DEFAULT_LAYOUT),
+                "autostart": ly.get("autostart", []),
+                "autoOpen": ly.get("autoOpen", ""),
             })
             return
 
@@ -375,17 +377,24 @@ class Handler(BaseHTTPRequestHandler):
             hidden = data.get("hidden")
             theme = data.get("theme")
             layout_id = data.get("layout")
-            # dock/hidden 若提供则必须为数组；theme 必须在 THEMES 中；layout 必须在 LAYOUTS 中
+            autostart = data.get("autostart")
+            auto_open = data.get("autoOpen")
+            # dock/hidden/autostart 若提供则必须为数组；theme 必须在 THEMES 中；layout 必须在 LAYOUTS 中
             if dock is not None and not isinstance(dock, list):
                 self._json({"ok": False, "msg": "dock 必须为数组"}); return
             if hidden is not None and not isinstance(hidden, list):
                 self._json({"ok": False, "msg": "hidden 必须为数组"}); return
+            if autostart is not None and not isinstance(autostart, list):
+                self._json({"ok": False, "msg": "autostart 必须为数组"}); return
+            if auto_open is not None and not isinstance(auto_open, str):
+                self._json({"ok": False, "msg": "autoOpen 必须为字符串"}); return
             if theme is not None and theme not in THEMES:
                 self._json({"ok": False, "msg": f"未知主题: {theme}"}); return
             if layout_id is not None and layout_id not in LAYOUTS:
                 self._json({"ok": False, "msg": f"未知布局: {layout_id}"}); return
             try:
-                layout.save_layout(dock, hidden, theme, layout_id)
+                layout.save_layout(dock, hidden, theme, layout_id,
+                                   autostart, auto_open)
                 # dock/hidden 变化才需要刷新注册表；theme/layout 仅影响前端渲染
                 if dock is not None or hidden is not None:
                     app_registry.reload_apps()

@@ -25,8 +25,10 @@ def load_layout():
         return {}
 
 
-def save_layout(dock=None, hidden=None, theme=None, layout=None):
-    """原子写 layout.json。dock/hidden 为 list[str]，theme/layout 为 str；None 表示保留旧值。
+def save_layout(dock=None, hidden=None, theme=None, layout=None,
+                autostart=None, auto_open=None):
+    """原子写 layout.json。dock/hidden/autostart 为 list[str]，theme/layout/autoOpen 为 str；
+    None 表示保留旧值。
 
     返回写入后的完整 dict。
     """
@@ -39,6 +41,10 @@ def save_layout(dock=None, hidden=None, theme=None, layout=None):
         cur["theme"] = str(theme)
     if layout is not None:
         cur["layout"] = str(layout)
+    if autostart is not None:
+        cur["autostart"] = [str(x) for x in autostart if x]
+    if auto_open is not None:
+        cur["autoOpen"] = str(auto_open or "")
     cur["version"] = 1
     atomic_write_bytes(
         LAYOUT_JSON, json.dumps(cur, ensure_ascii=False, indent=2).encode("utf-8")

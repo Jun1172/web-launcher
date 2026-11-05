@@ -139,32 +139,46 @@ async function killApp(id){
     if(recentsOpen)renderRecents();poll();}}
 
 /* ── 最近任务 ── */
+/* 全量运行快照(含隐藏应用): id → app 对象, poll() 每 2s 刷新。
+ * 自启后台/隐藏应用没有桌面卡片, 靠这份快照进最近任务, 用户才能看到并终止 */
+let RUNNING_FULL={};
 function openRecents(){recentsOpen=true;renderRecents();$('recents').classList.add('show');}
 function closeRecents(){recentsOpen=false;$('recents').classList.remove('show');}
+/* 最近任务列表 = 打开过的页面(含页面保活) ∪ 进程在跑但没开页面的应用(自启/隐藏后台) */
+function recentsIds(){
+  const ids=[...openedOrder];
+  Object.keys(RUNNING_FULL).forEach(id=>{if(!ids.includes(id))ids.push(id);});
+  return ids;
+}
+function rCard(id){
+  const a=APPS.find(x=>x.id===id)||RUNNING_FULL[id];if(!a)return null;
+  const bg=!APPS.find(x=>x.id===id);   // 不在桌面列表 → 隐藏应用, 标注"后台"
+  const c=document.createElement('div');c.className='card';c.dataset.id=id;
+  c.innerHTML=`<button class="x">✕</button>
+    <div class="tile" style="--c:${a.color}">${iconHtml(a,'app-icon-image')}</div>
+    <div class="name">${esc(a.name)}</div><div class="st">${a.running?(bg?'进程运行中（后台）':'进程运行中'):'页面保活中'}</div>`;
+  let sy=null,mvY=0;
+  c.addEventListener('pointerdown',e=>{sy=e.clientY;c.setPointerCapture(e.pointerId);c.style.transition='none';});
+  c.addEventListener('pointermove',e=>{if(sy==null)return;mvY=e.clientY-sy;if(mvY<0)c.style.transform=`translateY(${mvY}px)`;});
+  c.addEventListener('pointerup',e=>{
+    if(sy==null)return;const dy=mvY;mvY=0;sy=null;c.style.transition='';c.style.transform='';
+    if(dy<-60){killApp(id);return;}
+    if(Math.abs(dy)<6)c.click();});
+  c.onclick=()=>{if(suppress)return;closeRecents();openApp(a);};
+  c.querySelector('.x').onclick=e=>{e.stopPropagation();killApp(id);};
+  return c;
+}
 function renderRecents(){
   const box=$('rCards');box.innerHTML='';
-  if(!openedOrder.length){box.innerHTML='<div class="rEmpty">没有运行中的应用</div>';return;}
-  openedOrder.slice().reverse().forEach(id=>{
-    const a=APPS.find(x=>x.id===id);if(!a)return;
-    const c=document.createElement('div');c.className='card';c.dataset.id=id;
-    c.innerHTML=`<button class="x">✕</button>
-      <div class="tile" style="--c:${a.color}">${iconHtml(a,'app-icon-image')}</div>
-      <div class="name">${esc(a.name)}</div><div class="st">${a.running?'进程运行中':'页面保活中'}</div>`;
-    let sy=null,mvY=0;
-    c.addEventListener('pointerdown',e=>{sy=e.clientY;c.setPointerCapture(e.pointerId);c.style.transition='none';});
-    c.addEventListener('pointermove',e=>{if(sy==null)return;mvY=e.clientY-sy;if(mvY<0)c.style.transform=`translateY(${mvY}px)`;});
-    c.addEventListener('pointerup',e=>{
-      if(sy==null)return;const dy=mvY;mvY=0;sy=null;c.style.transition='';c.style.transform='';
-      if(dy<-60){killApp(id);return;}
-      if(Math.abs(dy)<6)c.click();});
-    c.onclick=()=>{if(suppress)return;closeRecents();openApp(a);};
-    c.querySelector('.x').onclick=e=>{e.stopPropagation();killApp(id);};
-    box.appendChild(c);});}
+  const ids=recentsIds().slice().reverse();
+  if(!ids.length){box.innerHTML='<div class="rEmpty">没有运行中的应用</div>';return;}
+  ids.forEach(id=>{const c=rCard(id);if(c)box.appendChild(c);});
+}
 
 $('clearAll').onclick=async ()=>{
-  const n=openedOrder.length;if(!n)return;
+  const ids=recentsIds();const n=ids.length;if(!n)return;
   if(!confirm(`确定关闭所有 ${n} 个运行中的应用？（进程将被回收）`))return;
-  const all=[...openedOrder];
+  const all=ids;
   for(const id of all){
     if(pages[id]){
       const iframe=pages[id].querySelector('iframe');
@@ -177,6 +191,7 @@ $('clearAll').onclick=async ()=>{
   setTimeout(()=>{
     for(const id of all){ if(pages[id]){pages[id].remove();delete pages[id];} }
     openedOrder.length=0;
+    RUNNING_FULL={};
     if(current){current=null;$('home').classList.remove('dim');}
     if(recentsOpen)renderRecents();
     poll();
@@ -269,6 +284,29 @@ async function renderLayoutList(){
   const useLayoutDock = Array.isArray(ly.dock);
   const dockSet = new Set(ly.dock || []);
   const hiddenSet = new Set(ly.hidden || []);
+  const autoSet = new Set(ly.autostart || []);
+
+  /* 启动自动进入: 单选下拉(窗口唯一 → 唯一性), 插在应用列表上方 */
+  let aoRow = document.getElementById('autoOpenRow');
+  if (!aoRow) {
+    /* 原生 select 弹开的选项列表不吃页面背景, 白底+浅色字会看不清;
+     * 给 select 本体和 option 显式上主题色(跟随当前主题变量) */
+    if (!document.getElementById('autoOpenSelStyle')) {
+      const st=document.createElement('style'); st.id='autoOpenSelStyle';
+      st.textContent='#autoOpenSel{background:var(--panel-bg,rgba(24,37,64,.82));color:var(--text-primary,#f1f5f9)}'
+        +'#autoOpenSel option{background:var(--panel-bg,rgba(24,37,64,.82));color:var(--text-primary,#f1f5f9)}';
+      document.head.appendChild(st);
+    }
+    aoRow = document.createElement('div');
+    aoRow.id = 'autoOpenRow';
+    aoRow.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:13px;color:var(--text-secondary)';
+    aoRow.innerHTML = '<span style="white-space:nowrap">启动自动进入</span>' +
+      '<select id="autoOpenSel" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border,rgba(128,128,128,.35));background:var(--panel-bg,rgba(24,37,64,.82));color:var(--text-primary);font-size:13px"></select>';
+    $('layList').parentNode.insertBefore(aoRow, $('layList'));
+  }
+  document.getElementById('autoOpenSel').innerHTML =
+    '<option value="">无（默认进桌面）</option>' +
+    apps.map(a=>'<option value="'+a.id+'"'+(ly.autoOpen===a.id?' selected':'')+'>'+esc(a.name)+'</option>').join('');
 
   box.innerHTML='';
   apps.forEach(a=>{
@@ -279,6 +317,7 @@ async function renderLayoutList(){
       '<span class="ic" style="color:'+(a.color||'#888')+'">'+iconHtml(a,'app-icon-image')+'</span>'+
       '<span class="nm">'+esc(a.name)+(a.system?'<small>系统</small>':'')+'</span>'+
       '<label class="cb"><input type="checkbox" data-id="'+a.id+'" data-field="dock" '+(inDock?'checked':'')+'> Dock</label>'+
+      '<label class="cb"><input type="checkbox" data-id="'+a.id+'" data-field="autostart" '+(autoSet.has(a.id)?'checked':'')+'> <span>自启</span></label>'+
       '<label class="cb hideLbl"><input type="checkbox" data-id="'+a.id+'" data-field="hidden" '+(isHidden?'checked':'')+'> <span>隐藏</span></label>';
     box.appendChild(row);
   });
@@ -293,19 +332,24 @@ async function toggleAllHidden(hide){
 }
 
 async function saveLayout(){
-  const dock=[], hidden=[];
+  const dock=[], hidden=[], autostart=[];
   document.querySelectorAll('#layList input[type=checkbox]').forEach(cb=>{
     const id=cb.dataset.id, f=cb.dataset.field;
     if(cb.checked){
       if(f==='dock') dock.push(id);
       if(f==='hidden') hidden.push(id);
+      if(f==='autostart') autostart.push(id);
     }
   });
+  /* 启动自动进入(唯一): 若目标应用未勾自启, 自动补上——否则每次启动都干等"拉起进程" */
+  const aoSel=document.getElementById('autoOpenSel');
+  const autoOpen=(aoSel&&aoSel.value)||'';
+  if(autoOpen&&!autostart.includes(autoOpen))autostart.push(autoOpen);
   try{
     const r=await fetch('/api/layout',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({dock, hidden})
+      body:JSON.stringify({dock, hidden, autostart, autoOpen})
     });
     const j=await r.json();
     if(j.ok){
@@ -323,6 +367,12 @@ async function poll(){
   APPS=await (await fetch('/api/apps')).json();
   const cur=APPS.map(a=>a.id).join(',');
   if(prev!==cur&&prev.length&&typeof buildHome==='function')buildHome();
+  /* 全量运行快照(含隐藏应用): 供最近任务展示自启/隐藏后台进程 */
+  try{
+    RUNNING_FULL={};
+    (await (await fetch('/api/apps?all=1')).json()).forEach(a=>{
+      if(a.running)RUNNING_FULL[a.id]=a;});
+  }catch(e){}
   if(typeof updateDots==='function')updateDots();
   if(recentsOpen)renderRecents();
   // 取走应用上行通知并弹出（即使来源 app 非当前视图/窗口最小化）
@@ -364,9 +414,25 @@ addEventListener('keydown',e=>{if(e.key==='Escape'){
 
 /* ── 初始化 ── */
 initTheme();
-poll().then(()=>{
+poll().then(async ()=>{
   if(typeof buildHome==='function')buildHome();
-  setInterval(poll,2000);});
+  setInterval(poll,2000);
+  /* 启动自动进入: layout.json autoOpen 指定的应用(唯一), 仅本次加载执行一次;
+   * /api/open 会自动拉起未运行的进程(等端口就绪再装 iframe)。
+   * 目标允许是隐藏应用: APPS 是过滤后的桌面列表, 找不到时再查 /api/apps?all=1 全量 */
+  try{
+    const ly=await fetch('/api/layout').then(r=>r.json());
+    const aid=ly.autoOpen;
+    if(aid){
+      let a=APPS.find(x=>x.id===aid);
+      if(!a){
+        const all=await fetch('/api/apps?all=1').then(r=>r.json()).catch(()=>null);
+        a=Array.isArray(all)?all.find(x=>x.id===aid):null;
+      }
+      if(a)openApp(a);
+    }
+  }catch(e){/* 布局读取失败不影响正常进桌面 */}
+});
 
 /* ── pywebview 窗口控制（自注入，reload 后不丢） ──
    仅在 pywebview 环境创建：状态栏拖拽 + 8 边缘缩放热区 + 右上角 —▢✕ 按钮。

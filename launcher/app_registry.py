@@ -165,10 +165,15 @@ def reload_apps():
 
 
 def find_app(aid):
-    """根据 id 在 REGISTRY 中查找应用元数据；找不到返回 None。"""
-    for a in REGISTRY:
-        if a["id"] == aid:
-            return a
+    """根据 id 查找应用元数据；找不到返回 None。
+
+    先搜 REGISTRY(过滤 hidden 后的桌面列表)，再兜底搜 all_apps 全量快照——
+    隐藏应用仍需可经 /api/open 打开(启动自动进入 autoOpen 的目标允许被隐藏)。
+    """
+    for src in (REGISTRY, all_apps):
+        for a in src:
+            if a["id"] == aid:
+                return a
     return None
 
 

@@ -4,9 +4,12 @@
   "icon": "📜",
   "color": "#f59e0b",
   "version": "1.0.0",
+  "author": "Shaco",
   "changelog": "v1.0.0: SSE实时日志推流，关键字高亮，暂停滚动，历史搜索",
   "port": 8151,
-  "cmd": ["apps/user/log-viewer/app.py"],
+  "cmd": [
+    "apps/user/log-viewer/app.py"
+  ],
   "dock": false,
   "group": "user"
 }

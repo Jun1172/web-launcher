@@ -30,6 +30,7 @@
 | `icon` | string | ❌ | 📦 | emoji 图标 |
 | `color` | string | ❌ | #999 | 主题色（CSS） |
 | `changelog` | string | ❌ | — | 版本说明 |
+| `author` | string | ❌ | — | 作者/维护人（商店卡片、详情弹窗展示，可按作者搜索；多人协作时便于追责找人） |
 | `released` | string | ❌ | — | 发布时间（ISO 8601） |
 | `dock` | bool | ❌ | false | 是否常驻底部 Dock（出厂默认；用户可用 layout.json 覆盖） |
 | `group` | string | ❌ | `"user"` | 分组来源；`"system"` 受保护不可卸载，自定义分组发布/卸载按此分组 |

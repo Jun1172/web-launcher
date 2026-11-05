@@ -39,7 +39,7 @@ from .frontend import render_home_html, stub_html, TEMPLATES_DIR
 
 # /api/apps 允许暴露的应用字段白名单（避免把 app.json 中 env 等敏感字段发给前端）
 APP_FIELDS = ("id", "name", "icon", "icon_file", "color", "version", "cmd",
-              "port", "dock", "group", "system", "changelog",
+              "port", "dock", "group", "system", "changelog", "author",
               "released", "port_conflict")
 
 # ── 应用→launcher 上行通知队列 ──

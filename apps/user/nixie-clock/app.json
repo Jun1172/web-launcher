@@ -4,9 +4,12 @@
   "icon": "📺",
   "color": "#f97316",
   "version": "1.0.0",
+  "author": "Shaco",
   "changelog": "时间、日期、秒表与颜色模式切换。",
   "port": 8168,
-  "cmd": ["apps/user/nixie-clock/app.py"],
+  "cmd": [
+    "apps/user/nixie-clock/app.py"
+  ],
   "dock": false,
   "group": "user"
 }

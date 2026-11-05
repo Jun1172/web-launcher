@@ -190,6 +190,7 @@ apps/user/my-app/
 | `id` | 应用唯一 ID |
 | `name` | 显示名称 |
 | `version` | 应用版本 |
+| `author` | 作者/维护人（商店展示与搜索；多人协作时便于找到负责人） |
 | `cmd` | 启动命令 |
 | `port` | 建议端口，Launcher 会自动处理冲突 |
 | `group` | 应用分组 |

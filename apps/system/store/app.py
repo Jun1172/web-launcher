@@ -523,7 +523,7 @@ function render(){
   if(groupQuery !== 'all') list = list.filter(a => (a.group || '未分类') === groupQuery);
   
   if(searchQuery) {
-    list = list.filter(a => a.name.toLowerCase().includes(searchQuery) || (a.changelog && a.changelog.toLowerCase().includes(searchQuery)));
+    list = list.filter(a => a.name.toLowerCase().includes(searchQuery) || (a.changelog && a.changelog.toLowerCase().includes(searchQuery)) || (a.author && a.author.toLowerCase().includes(searchQuery)));
   }
   
   const box = document.getElementById('list');
@@ -581,7 +581,7 @@ function renderCard(app){
     <div class="app-info">
       <div class="app-name">${esc(app.name)} ${tag}</div>
       <div class="app-desc" title="${esc(app.changelog || '')}">${desc}</div>
-      <div class="app-meta">${verHtml} · ${fmtSize(app.size)}</div>
+      <div class="app-meta">${app.author ? `<span title="作者：${esc(app.author)}">👤 ${esc(app.author)}</span> · ` : ''}${verHtml} · ${fmtSize(app.size)}</div>
     </div>
     <div class="app-actions">
       <button class="btn-info" data-action="detail" data-id="${app.id}" title="查看详情">ⓘ</button>
@@ -612,6 +612,7 @@ function openDetail(id){
   const cells = [
     {lb: '当前版本', vl: curV, sub: app.localReleased ? fmtTime(app.localReleased) : (app.installed ? '已安装' : '—')},
     {lb: '最新版本', vl: 'v' + latestV, sub: app.released ? fmtTime(app.released) : '—'},
+    {lb: '作者', vl: app.author || '—', sub: app.author ? '开发者' : '未标注'},
     {lb: '应用类型', vl: app.system ? '🛡️ 系统' : '📦 用户', sub: app.installed ? '已在设备中' : '尚未安装'},
     {lb: '包体大小', vl: fmtSize(app.size), sub: app.id},
   ];

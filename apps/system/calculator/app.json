@@ -4,9 +4,12 @@
   "icon": "🧮",
   "color": "#818cf8",
   "version": "1.0.0",
+  "author": "Shaco",
   "changelog": "支持普通模式与程序员 Hex 模式。",
   "port": 8140,
-  "cmd": ["apps/system/calculator/app.py"],
+  "cmd": [
+    "apps/system/calculator/app.py"
+  ],
   "dock": true,
   "group": "system"
 }

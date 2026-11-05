@@ -527,7 +527,7 @@ def build_entry(meta, zip_path):
     """生成 index.json 里的单个 app 条目"""
     # 白名单：只保留实际生效的字段（system 已废弃，group 为分组来源）
     FIELDS = ("id", "name", "icon", "icon_file", "color", "version", "changelog",
-              "port", "cmd", "dock", "group", "released", "standalone")
+              "author", "port", "cmd", "dock", "group", "released", "standalone")
     entry = {k: meta[k] for k in FIELDS if k in meta}
 
     # 兼容处理：如果旧配置没有 group，自动推断并写入

@@ -28,3 +28,6 @@ tools/fonts/noto-emoji/
 .emoji_chars.txt
 .launcher-wheels-win-x64
 launcher-1.1.4.exe
+tmp
+# 各应用 deps 自动安装的本地依赖目录（deps_installer 生成，可由 app.json 重生）
+site/
